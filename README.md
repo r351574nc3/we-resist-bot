@@ -1,8 +1,11 @@
 # We Resist Bot
 
+Basically follows @grumpycat upvotes/downvotes. Gets a collective set of users and proxies as them to upvote/downvote accordingly. 
+
+
 ## Usage
 
-`docker run -d --rm -p 3000:3000 my-repo/my-steem-bot:latest`
+`docker run -d --rm -e STEEM_NAME=we-resistr351574nc3/we-resist-bot:latest`
 
 ### Mac OS Users
 
