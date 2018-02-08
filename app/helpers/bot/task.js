@@ -7,6 +7,7 @@ const moment = require('moment')
 const schedule = require('node-schedule')
 
 
+const UNVOTE_WEIGHT = 0
 
 module.exports = {
     execute
@@ -88,27 +89,19 @@ function processUpvote(vote) {
     return false
 }
 
-function collectiveDownvote(author, permlink) {
-    return list_of_resisters().filter((resister) => is_active(resister))
-        .each((resister) => {
-            return steem.broadcast.voteAsync(
-                    resister.wif, 
-                    resister.name, 
-                    author,
-                    permlink,
-                    resister.downvoteWeight
-                )
-            .then((results) =>  {
-                console.log(results)
-            })s
-            .catch((err) => {
-                console.log("Vote failed: ", err)
-            })
-        })
+function processUnvote(vote) {
+    if (!vote.is_grumpy()) {
+        return false
+    }
+
+    return collectiveVote(author, permlink, UNVOTE_WEIGHT)
 }
 
+function collectiveDownvote(author, permlink) {
+    return collectiveVote(author, permlink, resister.downvoteWeight)
+}
 
-function collectiveUpvote(author, permlink) {
+function collectiveVote(author, permlink, weight) {
     return list_of_resisters().filter((resister) => is_active(resister))
         .each((resister) => {
             return steem.broadcast.voteAsync(
@@ -116,7 +109,7 @@ function collectiveUpvote(author, permlink) {
                     resister.name, 
                     author,
                     permlink,
-                    resister.upvoteWeigh
+                    weight
                 )
             .then((results) =>  {
                 console.log(results)
@@ -125,6 +118,10 @@ function collectiveUpvote(author, permlink) {
                 console.log("Vote failed: ", err)
             })
     })
+}
+
+function collectiveUpvote(author, permlink) {
+    return collectiveVote(author, permlink, resister.upvoteWeight)
 }
 
 function execute() {
@@ -136,7 +133,8 @@ function execute() {
                 case 'vote':
                     processVote(new Vote(result[1]))
                 case 'unvote':
-                    break;
+                    processUnvote(new Vote(result[1]))
+                break;
                 default:
             }   
         }

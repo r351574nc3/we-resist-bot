@@ -5,7 +5,7 @@ Basically follows @grumpycat upvotes/downvotes. Gets a collective set of users a
 
 ## Usage
 
-`docker run -d --rm -e STEEM_NAME=we-resistr351574nc3/we-resist-bot:latest`
+`docker run -d --rm -e STEEM_NAME=we-resist -p 3000:3000 r351574nc3/we-resist-bot:latest`
 
 ### Mac OS Users
 
