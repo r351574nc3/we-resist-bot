@@ -5,7 +5,9 @@ const steem = Promise.promisifyAll(require('steem'))
 const config = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
-
+const Sequelize = require('sequelize')
+const models = require('../../../models')
+const Op = Sequelize.Op;
 
 const UNVOTE_WEIGHT = 0
 
@@ -15,8 +17,10 @@ module.exports = {
 
 // Stubbed function
 function list_of_grumpy_users() {
+    let grumps = []
+    grumps.push('grumpycat')
     return new Promise((resolve, reject) => {
-        resolve([])
+        resolve(grumps)
     })
 }
 
@@ -69,8 +73,18 @@ function processVote(vote) {
  * }
  */
 function list_of_resisters() {
-    return new Promise((resolve, reject) => {
-        resolve([])
+    return models.Preferences.findAll( { 
+        where: { 
+            [Op.or]: [ 
+                {
+                    upvoteWeight: { [Op.gt]: 0 }
+                }, 
+                {
+                    downvoteWeight: { [Op.gt]: 0 } 
+                }
+            ] 
+        },
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ]
     })
 }
 
@@ -84,7 +98,7 @@ function processDownvote(vote) {
 
 function processUpvote(vote) {
     if (vote.is_for_grumpy()) {
-        return collectiveUpvote(vote.author, vote.permlink)
+        return collectiveDownvote(vote.author, vote.permlink)
     }
     return false
 }
@@ -94,34 +108,48 @@ function processUnvote(vote) {
         return false
     }
 
-    return collectiveVote(author, permlink, UNVOTE_WEIGHT)
+    return collectiveUnvote(author, permlink)
+}
+
+
+function downvote(author, permlink, resister) {
+    return vote(author, permlink, resister, resister.downvoteWeight * -1)
+}
+
+function upvote(author, permlink, resister) {
+    return vote(author, permlink, resister, resister.upvoteWeight)
+}
+
+function unvote(author, permlink, resister) {
+    return vote(author, permlink, resister, UNVOTE_WEIGHT)
+}
+
+function vote(author, permlink, resister, weight) {
+    return steem.broadcast.voteAsync(
+            resister.wif, 
+            resister.username, 
+            author,
+            permlink,
+            weight
+        )
+        .then((results) =>  {
+            console.log(results)
+        })
+        .catch((err) => {
+            console.log("Vote failed: ", err)
+        })
 }
 
 function collectiveDownvote(author, permlink) {
-    return collectiveVote(author, permlink, resister.downvoteWeight)
-}
-
-function collectiveVote(author, permlink, weight) {
-    return list_of_resisters().filter((resister) => is_active(resister))
-        .each((resister) => {
-            return steem.broadcast.voteAsync(
-                    resister.wif, 
-                    resister.name, 
-                    author,
-                    permlink,
-                    weight
-                )
-            .then((results) =>  {
-                console.log(results)
-            })
-            .catch((err) => {
-                console.log("Vote failed: ", err)
-            })
-    })
+    return list_of_resisters().each((resister) => { return downvote(author, permlink, resister) })
 }
 
 function collectiveUpvote(author, permlink) {
-    return collectiveVote(author, permlink, resister.upvoteWeight)
+    return list_of_resisters().each((resister) => { return upvote(author, permlink, resister) })
+}
+
+function collectiveUnvote(author, permlink) {
+    return list_of_resisters().each((resister) => { return unvote(author, permlink, resister) })
 }
 
 function execute() {

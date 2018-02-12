@@ -1,0 +1,166 @@
+<!-- views/pages/index.ejs -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Preferences</title>
+    <% include ../partials/head %>
+</head>
+<body class="bg-light">
+
+    <div class="container">
+      <div class="py-5 text-center">
+        <img class="d-block mx-auto mb-4" src="/steem-logo.png" alt="" width="72" height="72">
+        <h2>Preferences Form</h2>
+        <p class="lead">Set your upvote/downvote preferences</p>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 order-md-2 mb-4">
+          <h4 class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-muted">Section</span>
+          </h4>
+          <ul class="list-group mb-3">
+            <li class="list-group-item d-flex justify-content-between lh-condensed">
+              <div>
+                <h6 class="my-0">Voting</h6>
+                <small class="text-muted">Section where you define your voting preferences </small>
+              </div>
+            </li>
+          </ul>
+
+        </div>
+        <div class="col-md-7 order-md-1">
+          <h4 class="mb-3">Voting preferences</h4>
+          <form class="needs-validation" novalidate>
+            <div class="mb-3">
+              <label for="upvoteWeight">Upvote Weight</label><br/>
+              <input id="upvoteWeight" data-slider-id='upvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.upvoteWeight%>"/>&nbsp;
+              <input id="upvoteWeightText" size="7" value="<%=preferences.upvoteWeight%>" />%
+            <div class="invalid-feedback" style="width: 100%;">
+                upvote weight needs to be a number between 0 and 100
+            </div>
+            </div>
+
+
+            <div class="mb-3">
+              <label for="downvoteWeight">Downvote Weight</label><br/>
+              <input id="downvoteWeight" data-slider-id='downvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.downvoteWeight%>"/>&nbsp;
+              <input id="downvoteWeightText" size="7" value="<%=preferences.downvoteWeight%>" />%
+            <div class="invalid-feedback" style="width: 100%;">
+                downvote weight needs to be a number between 0 and 100
+            </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="threshold">Voting Threshold <span class="text-muted">(Optional)</span></label><br/>
+
+              <input id="threshold" data-slider-id='thresholdSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.threshold%>"/>&nbsp;
+              <input id="thresholdText" size="7" value="<%=preferences.threshold%>" />%
+              <div class="invalid-feedback">
+                threshold needs to be a number between 0 and 100
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="wif">WIF</label>
+              <input type="password" class="form-control" id="wif" placeholder="" required>
+              <div class="invalid-feedback">
+                Please enter your WIF.
+              </div>
+            </div>
+
+            <hr class="mb-3">
+            <%if (preferences) {%>
+            <input type="hidden" name="uid" id="uid" value="<%=preferences.id%>" />
+            <% } %>
+            <button id="saveBtn" class="btn btn-primary btn-lg btn-block">Save Preferences</button>
+            <a href="/logout" class="btn btn-secondary btn-lg btn-block" role="button" aria-disabled="true">Logout</a>          </form>
+        </div>
+      </div>
+
+      <footer class="my-5 pt-5 text-muted text-center text-small">
+        <p class="mb-1">&copy; 2018-2019 We Resist!</p>
+        <ul class="list-inline">
+          <li class="list-inline-item"><a href="#">Privacy</a></li>
+          <li class="list-inline-item"><a href="#">Terms</a></li>
+          <li class="list-inline-item"><a href="#">Support</a></li>
+        </ul>
+      </footer>
+    </div>
+    <% include ../partials/footer %>
+
+    <script>
+
+    $('#upvoteWeight').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+
+    $('#upvoteWeight').on('change', function(event) {
+        $('#upvoteWeightText').val($(this).slider('getValue'))
+    })
+    $('#upvoteWeightText').on('change', function(event) {
+        $('#upvoteWeight').slider('setValue', parseFloat($(this).val()))
+    })
+
+    $('#downvoteWeight').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+    $('#downvoteWeight').on('change', function(event) {
+        $('#downvoteWeightText').val($(this).slider('getValue'))
+    })
+    $('#downvoteWeightText').on('change', function(event) {
+        $('#downvoteWeight').slider('setValue', parseFloat($(this).val()))
+    })
+    $('#threshold').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+    $('#threshold').on('change', function(event) {
+        $('#thresholdText').val($(this).slider('getValue'))
+    })
+    $('#thresholdText').on('change', function(event) {
+        $('#threshold').slider('setValue', parseFloat($(this).val()))
+    })
+
+    $('#saveBtn').on('click', function(event) {
+        $('#saveBtn').prop('disabled', true)
+        var postUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
+        $.post(postUrl, assemble_data())
+            .done(function(data) {
+                $('#saveBtn').prop('disabled', false)
+                console.log(data)
+            })
+
+    })
+
+    function assemble_data() {
+        var pairs = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
+        var qs = {}
+        for (var idx = 0; idx < pairs.length; idx++)  {
+            var pair = pairs[idx].split('=')
+            qs[pair[0]] = pair[1]
+        }
+
+        var retval = {
+            access_token: qs.access_token,
+            upvoteWeight: parseFloat($('#upvoteWeightText').val()),
+            downvoteWeight: parseFloat($('#downvoteWeightText').val()),
+            threshold: parseFloat($('#thresholdText').val()),
+            wif: $('#wif').val()
+        }
+
+        if ($('#uid').length) {
+            retval.id = parseInt($('#uid').val())
+        }
+        return retval
+    }
+    </script>
+
+  </body>
+</html>
