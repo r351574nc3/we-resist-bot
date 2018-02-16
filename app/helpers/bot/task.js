@@ -53,7 +53,7 @@ class Vote {
 
 function processVote(vote) {
     if (!vote.is_grumpy()) {
-        return false
+         return false
     }
 
     if (vote.is_upvote()) {
@@ -83,14 +83,24 @@ function is_active(resister) {
 }
 
 function processDownvote(vote) {
+    console.log("Upvoting ", vote)
     return collectiveUpvote(vote.author, vote.permlink)
 }
 
 function processUpvote(vote) {
-    if (vote.is_for_grumpy()) {
-        return collectiveDownvote(vote.author, vote.permlink)
-    }
-    return false
+    return vote.is_for_grumpy()
+        .then((is_grumpy) => {
+            if (is_grumpy) { // Test for self-vote
+                console.log("Downvoting ", vote)
+                return collectiveDownvote(vote.author, vote.permlink)
+            }
+
+            // Not a self-vote
+            Promise.reject("Not a self vote")
+        })
+        .catch(err => {
+            console.log(err)
+        })
 }
 
 function processUnvote(vote) {
@@ -103,11 +113,11 @@ function processUnvote(vote) {
 
 
 function downvote(author, permlink, resister) {
-    return vote(author, permlink, resister, resister.downvoteWeight * -1)
+    return vote(author, permlink, resister, resister.downvoteWeight * -100)
 }
 
 function upvote(author, permlink, resister) {
-    return vote(author, permlink, resister, resister.upvoteWeight)
+    return vote(author, permlink, resister, resister.upvoteWeight * 100)
 }
 
 function unvote(author, permlink, resister) {
@@ -143,6 +153,7 @@ function collectiveUnvote(author, permlink) {
 }
 
 function execute() {
+    console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
         var user = config.user
         if (result && result.length > 0) {

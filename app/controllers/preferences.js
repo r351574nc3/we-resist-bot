@@ -55,7 +55,6 @@ function handle_prefs_from_database(username, res) {
     return models.Preferences.findOne({where: { username: username } })
         .then(prefs => {
             var preferences = prefs.dataValues
-            console.log(preferences)
             res.render('pages/index', {
                 redirect: 'https://we-resist-bot.herokuapp.com/',
                 username: username,
