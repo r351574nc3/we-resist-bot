@@ -52,7 +52,9 @@ class Vote {
 }
 
 function processVote(vote) {
+    console.log("Processing vote ", vote)
     if (!vote.is_grumpy()) {
+        console.log("Not grumpy")
         return false
     }
 
@@ -83,6 +85,7 @@ function is_active(resister) {
 }
 
 function processDownvote(vote) {
+    console.log('Processing vote ', vote)
     return collectiveUpvote(vote.author, vote.permlink)
 }
 
@@ -143,12 +146,14 @@ function collectiveUnvote(author, permlink) {
 }
 
 function execute() {
+    console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
         var user = config.user
         if (result && result.length > 0) {
             var operation_name = result[0]
             switch(operation_name) {
                 case 'vote':
+                    console.log("Handling vote ", result[1])
                     processVote(new Vote(result[1]))
                 case 'unvote':
                     processUnvote(new Vote(result[1]))
