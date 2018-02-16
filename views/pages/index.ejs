@@ -32,11 +32,10 @@
         </div>
         <div class="col-md-7 order-md-1">
           <h4 class="mb-3">Voting preferences</h4>
-          <form class="needs-validation" novalidate>
             <div class="mb-3">
               <label for="upvoteWeight">Upvote Weight</label><br/>
-              <input id="upvoteWeight" data-slider-id='upvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.upvoteWeight%>"/>&nbsp;
-              <input id="upvoteWeightText" size="7" value="<%=preferences.upvoteWeight%>" />%
+              <input id="upvoteWeight" data-slider-id='upvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.upvoteWeight%>" required/>&nbsp;
+              <input id="upvoteWeightText" size="7" class="form-control slider-text" value="<%=preferences.upvoteWeight%>" required/>%
             <div class="invalid-feedback" style="width: 100%;">
                 upvote weight needs to be a number between 0 and 100
             </div>
@@ -45,8 +44,8 @@
 
             <div class="mb-3">
               <label for="downvoteWeight">Downvote Weight</label><br/>
-              <input id="downvoteWeight" data-slider-id='downvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.downvoteWeight%>"/>&nbsp;
-              <input id="downvoteWeightText" size="7" value="<%=preferences.downvoteWeight%>" />%
+              <input id="downvoteWeight" data-slider-id='downvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.downvoteWeight%>" required/>&nbsp;
+              <input id="downvoteWeightText" size="7" class="form-control slider-text" value="<%=preferences.downvoteWeight%>" required/>%
             <div class="invalid-feedback" style="width: 100%;">
                 downvote weight needs to be a number between 0 and 100
             </div>
@@ -55,18 +54,18 @@
             <div class="mb-3">
               <label for="threshold">Voting Threshold <span class="text-muted">(Optional)</span></label><br/>
 
-              <input id="threshold" data-slider-id='thresholdSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.threshold%>"/>&nbsp;
-              <input id="thresholdText" size="7" value="<%=preferences.threshold%>" />%
+              <input id="threshold" data-slider-id='thresholdSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.threshold%>" required/>&nbsp;
+              <input id="thresholdText" size="7" class="form-control slider-text" value="<%=preferences.threshold%>" required/>%
               <div class="invalid-feedback">
                 threshold needs to be a number between 0 and 100
               </div>
             </div>
 
             <div class="mb-3">
-              <label for="wif">WIF</label>
+              <label for="wif">Private Posting Key</label>
               <input type="password" class="form-control" id="wif" placeholder="" required>
               <div class="invalid-feedback">
-                Please enter your WIF.
+                Please enter a valid Private Posting Key.
               </div>
             </div>
 
@@ -75,9 +74,52 @@
             <input type="hidden" name="uid" id="uid" value="<%=preferences.id%>" />
             <% } %>
             <button id="saveBtn" class="btn btn-primary btn-lg btn-block">Save Preferences</button>
-            <a href="/logout" class="btn btn-secondary btn-lg btn-block" role="button" aria-disabled="true">Logout</a>          </form>
+            <button id="deleteBtn" class="btn btn-danger btn-lg btn-block" data-toggle="modal" data-target="#confirmDeleteModal">Delete Preferences</button>
+            <a href="/logout" class="btn btn-secondary btn-lg btn-block" role="button" aria-disabled="true">Logout</a>
         </div>
-      </div>
+
+        <!-- Modal -->
+        <div class="modal fade" id="confirmDeleteModal" tabindex="-1" role="dialog" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="confirmDeleteModalLabel">Are you sure?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    You are about to delete your preferences and comply instead of resisting. Are you sure you want to do this?
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button id="confirmDelete" type="button" class="btn btn-danger" data-dismiss="modal">Delete</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        <div class="modal fade" id="notificationModal" tabindex="-1" role="dialog" aria-labelledby="notificationLabelModel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="notificationModalLabel">Are you sure?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    You are about to delete your preferences and comply instead of resisting. Are you sure you want to do this?
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+            </div>
+        </div>
+
+    </div>
+
+      
 
       <footer class="my-5 pt-5 text-muted text-center text-small">
         <p class="mb-1">&copy; 2018-2019 We Resist!</p>
@@ -129,15 +171,74 @@
     })
 
     $('#saveBtn').on('click', function(event) {
-        $('#saveBtn').prop('disabled', true)
-        var postUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
-        $.post(postUrl, assemble_data())
-            .done(function(data) {
-                $('#saveBtn').prop('disabled', false)
-                console.log(data)
-            })
-
+        if (validateForm()) {
+            $('#saveBtn').prop('disabled', true)
+            var postUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
+            $.post(postUrl, assemble_data())
+                .done(function(data) {
+                    console.log(data)
+                    let modal = $('#notificationModal')
+                    modal.find('.modal-title').text('Notification')
+                    modal.find('.modal-body').text('Your preferences saved successfully.')
+                    modal.modal('show')
+                })
+                .fail(function(err) {
+                    $('#wif').addClass('is-invalid')
+                    console.log(err)
+                })
+                .always(function() {
+                    $('#saveBtn').prop('disabled', false)
+                })
+        }
     })
+    $('#confirmDelete').on('click', function(event) {
+        $('#confirmDelete').prop('disabled', true)
+        var deleteUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
+        $.ajax(deleteUrl, { method: 'DELETE', data: assemble_data() })
+            .done(function(data) {
+                console.log(data)
+                let modal = $('#notificationModal')
+                modal.find('.modal-title').text('Notification')
+                modal.find('.modal-body').text('Your preferences have been deleted. You will no longer participate in we-resist')
+                modal.modal('show')
+            })
+            .fail(function(err) {
+                $('#wif').addClass('is-invalid')
+                console.log(err)
+            })
+            .always(function() {
+                $('#confirmDelete').prop('disabled', false)
+                $('#confirmDeleteModal').modal('hide')
+            })
+    
+    })
+
+    function validateForm() {
+        let retval = true
+        let upvoteWeight = parseFloat($('#upvoteWeightText').val())
+        let downvoteWeight = parseFloat($('#downvoteWeightText').val())
+        let threshold = parseFloat($('#thresholdText').val())
+
+        console.log("threshold", isNaN(threshold))
+
+        if (upvoteWeight < 0 || upvoteWeight > 100 || isNaN(upvoteWeight)) {
+            $('#upvoteWeightText').addClass('is-invalid')
+            $('#upvoteWeight').addClass('is-invalid')
+            retval = false
+        }
+        if (downvoteWeight < 0 || downvoteWeight > 100 || isNaN(downvoteWeight)) {
+            $('#downvoteWeightText').addClass('is-invalid')
+            $('#downvoteWeight').addClass('is-invalid')
+            retval = false
+        }
+        if (threshold < 0 || threshold > 100 || isNaN(threshold)) {
+            $('#thresholdText').addClass('is-invalid')
+            $('#threshold').addClass('is-invalid')
+            retval = false
+        }
+        console.log("Returning ", retval)
+        return retval
+    }
 
     function assemble_data() {
         var pairs = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');

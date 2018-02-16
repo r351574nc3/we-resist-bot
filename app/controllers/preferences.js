@@ -5,6 +5,7 @@ const Sequelize = require('sequelize')
 const models = require('../../models')
 const Promise = require('bluebird')
 const sc2 = Promise.promisifyAll(require ('sc2-sdk'))
+const steem = Promise.promisifyAll(require('steem'))
 
 var pg = require('pg');
 pg.defaults.ssl = true;
@@ -13,7 +14,8 @@ const sequelize = new Sequelize(db_url, { ssl: true })
 preferences = {
     get: get_preferences,
     put: put_preferences,
-    post: post_preferences
+    post: post_preferences,
+    delete: delete_preferences
 }
 
 function get_preferences(req, res) {
@@ -84,14 +86,25 @@ function put_preferences(req, res) {
         })
 }
 
+function validateWif(private_key) {
+    let wif_is_valid
+    try {
+        let public_key = steem.auth.wifToPublic(private_key)
+        wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
+    }
+    catch (error) {
+        wif_is_valid = false
+    }
+    
+    return wif_is_valid
+}
+
 function post_preferences(req, res) {
     var updatedValue = {
         upvoteWeight: req.body.upvoteWeight,
         downvoteWeight: req.body.downvoteWeight,
         threshold: req.body.threshold
     }
-
-    console.log("token ", req.body.access_token)
 
     var api = sc2.Initialize({
         app: 'we-resist',
@@ -116,13 +129,14 @@ function post_preferences(req, res) {
                     updatedValue.wif = req.body.wif
                 }
                 else {
-                    res.sendStatus(400)
+                    res.status(400)
                         .send({ status: 400,
                             error: {
                                 field: 'wif',
                                 message: 'Invalid Private Key'
                             }
                         })
+                    return
                 }
             }
         
@@ -138,6 +152,42 @@ function post_preferences(req, res) {
             res.status(401)
         })
 
+}
+
+function delete_preferences(req, res) {
+
+    // Basic REST validation
+    var api = sc2.Initialize({
+        app: 'we-resist',
+        callbackURL: 'https://we-resist-bot.herokuapp.com/',
+        accessToken: req.body.access_token,
+        scope: ['vote', 'comment']
+      })
+
+
+    return new Promise((resolve, reject) => {
+        let retval
+        api.me((err, me) => {
+            if (me) {
+                resolve(me.user)
+            }
+            reject(err)
+        })
+    })
+    .then((username) => {
+        let destroyed = []
+        return models.Preferences.findAll({ where: { username: username } })
+            .each((prefs) => {
+                destroyed.push(prefs.dataValues)
+                prefs.destroy()
+                Promise.resolve(destroyed)
+            })
+            .then((destroyed) => {
+                res.status(200).send({status: 200, destroyed: destroyed })
+                return destroyed
+            })
+    })
+    res.sendStatus(500)
 }
 
 module.exports = preferences

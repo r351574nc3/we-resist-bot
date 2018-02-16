@@ -73,23 +73,13 @@ function processVote(vote) {
  * }
  */
 function list_of_resisters() {
-    return models.Preferences.findAll( { 
-        where: { 
-            [Op.or]: [ 
-                {
-                    upvoteWeight: { [Op.gt]: 0 }
-                }, 
-                {
-                    downvoteWeight: { [Op.gt]: 0 } 
-                }
-            ] 
-        },
+    return models.Preferences.findAll( {
         attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ]
     })
 }
 
 function is_active(resister) {
-    return false
+    return true
 }
 
 function processDownvote(vote) {

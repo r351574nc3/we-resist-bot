@@ -47,23 +47,11 @@ app.get('/logout', function (req, res) {
   res.render('pages/logout')
 })
 
-app.get('/teardown', function(req, res) {
-  const models = require('../models')
-  models.Preferences.drop().then((results) => {
-    res.send({status: 'ok'})
-  })
-})
-
-app.get('/setup', function(req, res) {
-  const models = require('../models')
-  models.Preferences.sync({ force: true }).then((results) => {
-    res.send({status: 'ok'})
-  })
-})
-
 app.put('/@:user/preferences', Preferences.put)
 
 app.post('/@:user/preferences', Preferences.post)
+
+app.delete('/@:user/preferences', Preferences.delete)
 
 // Check on whether the bot is functioning
 app.get('/healthcheck', function (req, res) {
