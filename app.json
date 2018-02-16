@@ -1,0 +1,8 @@
+{
+  "name": "We resist Steem bot",
+  "description": "We resist Steem bot",
+  "repository": "https://www.github.com/r351574nc3/we-resist-bot",
+  "logo": "https://cdn.rawgit.com/heroku/node-js-getting-started/master/public/node.svg",
+  "keywords": ["node", "express", "steem"],
+  "image": "heroku/nodejs"
+}

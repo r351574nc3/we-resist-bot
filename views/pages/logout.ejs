@@ -1,0 +1,26 @@
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>Logout</title>
+        <% include ../partials/head %>
+        <link rel="stylesheet" href="/signin.css">
+    </head>
+
+  <body class="text-center">
+    <script>
+	sc2.init({
+  	app: 'we-resist',
+
+  	callbackURL: 'http://localhost:3000',
+  	
+
+	scope: ['vote']
+	});
+    sc2.revokeToken(function(err, res) {
+        
+    })
+    </script>
+    </body>
+</html>
+

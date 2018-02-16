@@ -1,0 +1,267 @@
+<!-- views/pages/index.ejs -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Preferences</title>
+    <% include ../partials/head %>
+</head>
+<body class="bg-light">
+
+    <div class="container">
+      <div class="py-5 text-center">
+        <img class="d-block mx-auto mb-4" src="/steem-logo.png" alt="" width="72" height="72">
+        <h2>Preferences Form</h2>
+        <p class="lead">Set your upvote/downvote preferences</p>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 order-md-2 mb-4">
+          <h4 class="d-flex justify-content-between align-items-center mb-3">
+            <span class="text-muted">Section</span>
+          </h4>
+          <ul class="list-group mb-3">
+            <li class="list-group-item d-flex justify-content-between lh-condensed">
+              <div>
+                <h6 class="my-0">Voting</h6>
+                <small class="text-muted">Section where you define your voting preferences </small>
+              </div>
+            </li>
+          </ul>
+
+        </div>
+        <div class="col-md-7 order-md-1">
+          <h4 class="mb-3">Voting preferences</h4>
+            <div class="mb-3">
+              <label for="upvoteWeight">Upvote Weight</label><br/>
+              <input id="upvoteWeight" data-slider-id='upvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.upvoteWeight%>" required/>&nbsp;
+              <input id="upvoteWeightText" size="7" class="form-control slider-text" value="<%=preferences.upvoteWeight%>" required/>%
+            <div class="invalid-feedback" style="width: 100%;">
+                upvote weight needs to be a number between 0 and 100
+            </div>
+            </div>
+
+
+            <div class="mb-3">
+              <label for="downvoteWeight">Downvote Weight</label><br/>
+              <input id="downvoteWeight" data-slider-id='downvoteWeightSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.downvoteWeight%>" required/>&nbsp;
+              <input id="downvoteWeightText" size="7" class="form-control slider-text" value="<%=preferences.downvoteWeight%>" required/>%
+            <div class="invalid-feedback" style="width: 100%;">
+                downvote weight needs to be a number between 0 and 100
+            </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="threshold">Voting Threshold <span class="text-muted">(Optional)</span></label><br/>
+
+              <input id="threshold" data-slider-id='thresholdSlider' type="text" data-slider-min="0.00" data-slider-max="100.00" data-slider-step="0.01" data-slider-value="<%=preferences.threshold%>" required/>&nbsp;
+              <input id="thresholdText" size="7" class="form-control slider-text" value="<%=preferences.threshold%>" required/>%
+              <div class="invalid-feedback">
+                threshold needs to be a number between 0 and 100
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="wif">Private Posting Key</label>
+              <input type="password" class="form-control" id="wif" placeholder="" required>
+              <div class="invalid-feedback">
+                Please enter a valid Private Posting Key.
+              </div>
+            </div>
+
+            <hr class="mb-3">
+            <%if (preferences) {%>
+            <input type="hidden" name="uid" id="uid" value="<%=preferences.id%>" />
+            <% } %>
+            <button id="saveBtn" class="btn btn-primary btn-lg btn-block">Save Preferences</button>
+            <button id="deleteBtn" class="btn btn-danger btn-lg btn-block" data-toggle="modal" data-target="#confirmDeleteModal">Delete Preferences</button>
+            <a href="/logout" class="btn btn-secondary btn-lg btn-block" role="button" aria-disabled="true">Logout</a>
+        </div>
+
+        <!-- Modal -->
+        <div class="modal fade" id="confirmDeleteModal" tabindex="-1" role="dialog" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="confirmDeleteModalLabel">Are you sure?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    You are about to delete your preferences and comply instead of resisting. Are you sure you want to do this?
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button id="confirmDelete" type="button" class="btn btn-danger" data-dismiss="modal">Delete</button>
+                </div>
+            </div>
+            </div>
+        </div>
+        <div class="modal fade" id="notificationModal" tabindex="-1" role="dialog" aria-labelledby="notificationLabelModel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                <h5 class="modal-title" id="notificationModalLabel">Are you sure?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+                </div>
+                <div class="modal-body">
+                    You are about to delete your preferences and comply instead of resisting. Are you sure you want to do this?
+                </div>
+                <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+            </div>
+        </div>
+
+    </div>
+
+      
+
+      <footer class="my-5 pt-5 text-muted text-center text-small">
+        <p class="mb-1">&copy; 2018-2019 We Resist!</p>
+        <ul class="list-inline">
+          <li class="list-inline-item"><a href="#">Privacy</a></li>
+          <li class="list-inline-item"><a href="#">Terms</a></li>
+          <li class="list-inline-item"><a href="#">Support</a></li>
+        </ul>
+      </footer>
+    </div>
+    <% include ../partials/footer %>
+
+    <script>
+
+    $('#upvoteWeight').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+
+    $('#upvoteWeight').on('change', function(event) {
+        $('#upvoteWeightText').val($(this).slider('getValue'))
+    })
+    $('#upvoteWeightText').on('change', function(event) {
+        $('#upvoteWeight').slider('setValue', parseFloat($(this).val()))
+    })
+
+    $('#downvoteWeight').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+    $('#downvoteWeight').on('change', function(event) {
+        $('#downvoteWeightText').val($(this).slider('getValue'))
+    })
+    $('#downvoteWeightText').on('change', function(event) {
+        $('#downvoteWeight').slider('setValue', parseFloat($(this).val()))
+    })
+    $('#threshold').slider({
+        formatter: function(value) {
+            return 'Current value: ' + value;
+        }
+    });
+    $('#threshold').on('change', function(event) {
+        $('#thresholdText').val($(this).slider('getValue'))
+    })
+    $('#thresholdText').on('change', function(event) {
+        $('#threshold').slider('setValue', parseFloat($(this).val()))
+    })
+
+    $('#saveBtn').on('click', function(event) {
+        if (validateForm()) {
+            $('#saveBtn').prop('disabled', true)
+            var postUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
+            $.post(postUrl, assemble_data())
+                .done(function(data) {
+                    console.log(data)
+                    let modal = $('#notificationModal')
+                    modal.find('.modal-title').text('Notification')
+                    modal.find('.modal-body').text('Your preferences saved successfully.')
+                    modal.modal('show')
+                })
+                .fail(function(err) {
+                    $('#wif').addClass('is-invalid')
+                    console.log(err)
+                })
+                .always(function() {
+                    $('#saveBtn').prop('disabled', false)
+                })
+        }
+    })
+    $('#confirmDelete').on('click', function(event) {
+        $('#confirmDelete').prop('disabled', true)
+        var deleteUrl = window.location.href.indexOf('@') > -1 ? 'preferences' : '@' + username + '/preferences'
+        $.ajax(deleteUrl, { method: 'DELETE', data: assemble_data() })
+            .done(function(data) {
+                console.log(data)
+                let modal = $('#notificationModal')
+                modal.find('.modal-title').text('Notification')
+                modal.find('.modal-body').text('Your preferences have been deleted. You will no longer participate in we-resist')
+                modal.modal('show')
+            })
+            .fail(function(err) {
+                $('#wif').addClass('is-invalid')
+                console.log(err)
+            })
+            .always(function() {
+                $('#confirmDelete').prop('disabled', false)
+                $('#confirmDeleteModal').modal('hide')
+            })
+    
+    })
+
+    function validateForm() {
+        let retval = true
+        let upvoteWeight = parseFloat($('#upvoteWeightText').val())
+        let downvoteWeight = parseFloat($('#downvoteWeightText').val())
+        let threshold = parseFloat($('#thresholdText').val())
+
+        console.log("threshold", isNaN(threshold))
+
+        if (upvoteWeight < 0 || upvoteWeight > 100 || isNaN(upvoteWeight)) {
+            $('#upvoteWeightText').addClass('is-invalid')
+            $('#upvoteWeight').addClass('is-invalid')
+            retval = false
+        }
+        if (downvoteWeight < 0 || downvoteWeight > 100 || isNaN(downvoteWeight)) {
+            $('#downvoteWeightText').addClass('is-invalid')
+            $('#downvoteWeight').addClass('is-invalid')
+            retval = false
+        }
+        if (threshold < 0 || threshold > 100 || isNaN(threshold)) {
+            $('#thresholdText').addClass('is-invalid')
+            $('#threshold').addClass('is-invalid')
+            retval = false
+        }
+        console.log("Returning ", retval)
+        return retval
+    }
+
+    function assemble_data() {
+        var pairs = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
+        var qs = {}
+        for (var idx = 0; idx < pairs.length; idx++)  {
+            var pair = pairs[idx].split('=')
+            qs[pair[0]] = pair[1]
+        }
+
+        var retval = {
+            access_token: qs.access_token,
+            upvoteWeight: parseFloat($('#upvoteWeightText').val()),
+            downvoteWeight: parseFloat($('#downvoteWeightText').val()),
+            threshold: parseFloat($('#thresholdText').val()),
+            wif: $('#wif').val()
+        }
+
+        if ($('#uid').length) {
+            retval.id = parseInt($('#uid').val())
+        }
+        return retval
+    }
+    </script>
+
+  </body>
+</html>
