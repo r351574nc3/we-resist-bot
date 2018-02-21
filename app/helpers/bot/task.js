@@ -49,6 +49,12 @@ class Vote {
             .filter((user) => this.author == user)
             .then((users) => { return users.length > 0 })
     }
+
+    is_for_resister() {
+        return list_of_resisters()
+            .filter((resister) => this.author == resister.username)
+            .then((resisters) => { return resisters.length > 0 })
+    }
 }
 
 function processVote(vote) {
@@ -59,7 +65,10 @@ function processVote(vote) {
     if (vote.is_upvote()) {
         return processUpvote(vote)
     }
-    return processDownvote(vote)
+
+    if (vote.is_for_resister()) {
+        return processDownvote(vote)
+    }
 }
 
 /**
