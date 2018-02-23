@@ -2,6 +2,7 @@
 
 const Promise = require('bluebird')
 const steem = Promise.promisifyAll(require('steem'))
+const sc2 = Promise.promisifyAll(require('sc2-sdk'))
 const config = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
@@ -69,6 +70,7 @@ function processVote(vote) {
     if (vote.is_for_resister()) {
         return processDownvote(vote)
     }
+    return invite(vote.author, vote.permlink);
 }
 
 /**
@@ -120,13 +122,46 @@ function processUnvote(vote) {
     return collectiveUnvote(author, permlink)
 }
 
+function invite(author, permlink) {
+    return reply(author, permlink, "invite");
+}
+
+function reply(author, permlink, type) {
+    var context = {
+    }
+
+    return loadTemplate(path.join(__dirname, '..', 'templates', `${type}.hb`))
+        .then((template) => {
+            var templateSpec = Handlebars.compile(template)
+            return templateSpec(context)
+        })
+        .then((message) => {
+            var permlink = 're-' + reply.author 
+                + '-' + reply.permlink 
+                + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+            steem.broadcast.commentAsync(
+                wif,
+                author, // Leave parent author empty
+                permlink, // Main tag
+                user, // Author
+                permlink, // Permlink
+                permlink,
+                message, // Body
+                { tags: [], app: 'we-resist-bot/0.1.0' }
+            ).then((results) => {
+                console.log(results)
+            })
+        })
+}
 
 function downvote(author, permlink, resister) {
     return vote(author, permlink, resister, resister.downvoteWeight * -100)
+        .then((promise) => { return reply(author, permlink, "downvote") });
 }
 
 function upvote(author, permlink, resister) {
     return vote(author, permlink, resister, resister.upvoteWeight * 100)
+        .then((promise) => { return reply(author, permlink, "upvote") });
 }
 
 function unvote(author, permlink, resister) {
