@@ -32,6 +32,7 @@
     "sc2-sdk": "^1.0.2",
     "sequelize": "^4.33.3",
     "sequelize-cli": "^3.2.0",
+    "sequelize-encrypted": "^1.0.0",
     "steem": "^0.7.1"
   },
   "devDependencies": {
