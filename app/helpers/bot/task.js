@@ -3,17 +3,24 @@
 const Promise = require('bluebird')
 const steem = Promise.promisifyAll(require('steem'))
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const config = require('../../config')
+const { user, wif } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
 const models = require('../../../models')
 const Op = Sequelize.Op;
+const Handlebars = require('handlebars')
+const fs = Promise.promisifyAll(require('fs'))
+const path = require('path')
 
 const UNVOTE_WEIGHT = 0
 
 module.exports = {
     execute
+}
+
+function loadTemplate(template) {
+    return fs.readFileAsync(template, 'utf8')
 }
 
 // Stubbed function
@@ -41,11 +48,12 @@ class Vote {
         return this.weight > 0
     }
 
-    is_grumpy() {
+    is_voter_grumpy() {
+        // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
         return this.voter == 'grumpycat'
     }
 
-    is_for_grumpy() {
+    is_author_grumpy() {
         return list_of_grumpy_users()
             .filter((user) => this.author == user)
             .then((users) => { return users.length > 0 })
@@ -59,9 +67,11 @@ class Vote {
 }
 
 function processVote(vote) {
-    if (!vote.is_grumpy()) {
+    if (!vote.is_voter_grumpy()) {
          return false
     }
+
+    console.log("processing vote ", vote);
 
     if (vote.is_upvote()) {
         return processUpvote(vote)
@@ -99,7 +109,7 @@ function processDownvote(vote) {
 }
 
 function processUpvote(vote) {
-    return vote.is_for_grumpy()
+    return vote.is_author_grumpy()
         .then((is_grumpy) => {
             if (is_grumpy) { // Test for self-vote
                 console.log("Downvoting ", vote)
@@ -115,7 +125,7 @@ function processUpvote(vote) {
 }
 
 function processUnvote(vote) {
-    if (!vote.is_grumpy()) {
+    if (!vote.is_voter_grumpy()) {
         return false
     }
 
@@ -136,16 +146,16 @@ function reply(author, permlink, type) {
             return templateSpec(context)
         })
         .then((message) => {
-            var permlink = 're-' + reply.author 
-                + '-' + reply.permlink 
+            var new_permlink = 're-' + author 
+                + '-' + permlink 
                 + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
             steem.broadcast.commentAsync(
                 wif,
                 author, // Leave parent author empty
                 permlink, // Main tag
                 user, // Author
-                permlink, // Permlink
-                permlink,
+                new_permlink, // Permlink
+                new_permlink,
                 message, // Body
                 { tags: [], app: 'we-resist-bot/0.1.0' }
             ).then((results) => {
@@ -156,7 +166,7 @@ function reply(author, permlink, type) {
 
 function downvote(author, permlink, resister) {
     return vote(author, permlink, resister, resister.downvoteWeight * -100)
-        .then((promise) => { return reply(author, permlink, "downvote") });
+        // .then((promise) => { return reply(author, permlink, "downvote") });
 }
 
 function upvote(author, permlink, resister) {
@@ -199,15 +209,15 @@ function collectiveUnvote(author, permlink) {
 function execute() {
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
-        var user = config.user
         if (result && result.length > 0) {
             var operation_name = result[0]
             switch(operation_name) {
                 case 'vote':
                     processVote(new Vote(result[1]))
+                    break;
                 case 'unvote':
                     processUnvote(new Vote(result[1]))
-                break;
+                    break;
                 default:
             }   
         }

@@ -26,6 +26,7 @@
     "bootstrap-slider": "^10.0.0",
     "ejs": "^2.5.7",
     "express": "^4.15.2",
+    "handlebars": "^4.0.11",
     "node-schedule": "^1.3.0",
     "pg": "^7.4.1",
     "pg-hstore": "^2.3.2",
