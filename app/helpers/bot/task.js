@@ -19,6 +19,25 @@ module.exports = {
     execute
 }
 
+const SECONDS_PER_HOUR = 3600
+const PERCENT_PER_DAY = 20
+const HOURS_PER_DAY = 24
+const MAX_VOTING_POWER = 10000
+const DAYS_TO_100_PERCENT = 100 / PERCENT_PER_DAY
+const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PER_HOUR
+const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
+const DEFAULT_THRESHOLD = 9500
+
+
+function current_voting_power(vp_last, last_vote) {
+    var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
+    return (RECOVERY_RATE * seconds_since_vote) + vp_last
+}
+
+function time_needed_to_recover(voting_power, threshold) {
+    return RECOVERY_RATE * (threshold - voting_power)
+}
+
 function loadTemplate(template) {
     return fs.readFileAsync(template, 'utf8')
 }
@@ -95,7 +114,8 @@ function processVote(vote) {
  */
 function list_of_resisters() {
     return models.Preferences.findAll( {
-        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ]
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ],
+        logging: (query) => {}
     })
 }
 
@@ -166,12 +186,29 @@ function reply(author, permlink, type) {
 
 function downvote(author, permlink, resister) {
     return vote(author, permlink, resister, resister.downvoteWeight * -100)
-        // .then((promise) => { return reply(author, permlink, "downvote") });
+        .then((promise) => { return reply(author, permlink, "downvote") });
 }
 
 function upvote(author, permlink, resister) {
-    return vote(author, permlink, resister, resister.upvoteWeight * 100)
-        .then((promise) => { return reply(author, permlink, "upvote") });
+    var recovery_wait = 0
+    return steem.api.getAccountsAsync([ resister.username ]).then((account) => {
+        var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+        recovery_wait = time_needed_to_recover(voting_power, resister.threshold) / 60
+        return account
+    })
+    .then((account) => {
+        // Reschedule vote
+        if (recovery_wait > 0) {
+            var later = moment().add(recovery_wait, 'minutes').toDate()
+            console.log("Rescheduling ", recovery_wait, " minutes to recover")
+            schedule.scheduleJob(later, function() {
+                upvote(author, permlink, resister, resister.upvoteWeight * 100)
+            })
+            return account
+        }
+        return vote(author, permlink, resister, resister.upvoteWeight * 100)
+            .then((promise) => { return reply(author, permlink, "upvote") });
+    })
 }
 
 function unvote(author, permlink, resister) {
@@ -206,12 +243,40 @@ function collectiveUnvote(author, permlink) {
     return list_of_resisters().each((resister) => { return unvote(author, permlink, resister) })
 }
 
+function processComment(comment) {
+    return list_of_resisters()
+        .filter((resister) => comment.author == resister.username)
+        .each((resister) => {
+            var recovery_wait = 0
+            return steem.api.getAccountsAsync([ user ]).then((account) => {
+                var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+                recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
+                return account
+            })
+            .then((account) => {
+                // Reschedule vote
+                if (recovery_wait > 0) {
+                    var later = moment().add(recovery_wait, 'minutes').toDate()
+                    console.log("Rescheduling ", recovery_wait, " minutes to recover")
+                    schedule.scheduleJob(later, function() {
+                        processComment(comment)
+                    })
+                    return account
+                }
+                return vote(comment.author, comment.permlink, { username: user, wif: wif }, 10000)
+            })
+        })
+}
+
 function execute() {
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
         if (result && result.length > 0) {
             var operation_name = result[0]
             switch(operation_name) {
+                case 'comment':
+                    processComment(result[1]);
+                    break;
                 case 'vote':
                     processVote(new Vote(result[1]))
                     break;
