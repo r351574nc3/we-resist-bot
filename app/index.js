@@ -53,13 +53,12 @@ app.post('/@:user/preferences', Preferences.post)
 
 app.delete('/@:user/preferences', Preferences.delete)
 
+bot.run()
+
 // Check on whether the bot is functioning
 app.get('/healthcheck', function (req, res) {
   res.setHeader('Content-Type', 'application/json')
   res.send(JSON.stringify({ uptime: startup.diff(moment(), 'days') }))
 })
-
-// Actual Bot Execution
-bot.run()
   
 app.listen(PORT, () => console.log(`Example app listening on port ${ PORT }!`))

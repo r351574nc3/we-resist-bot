@@ -1,5 +1,11 @@
 'use strict';
+
+const EncryptedField = require('sequelize-encrypted');
+const key = process.env.ENCRYPTION_KEY;
+
+
 module.exports = (sequelize, DataTypes) => {
+  // const encrypted_fields = EncryptedField(sequelize, key);
   var Preferences = sequelize.define('Preferences', {
     id: {
       allowNull: false,
