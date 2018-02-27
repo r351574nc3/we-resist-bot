@@ -35,7 +35,7 @@ function current_voting_power(vp_last, last_vote) {
 }
 
 function time_needed_to_recover(voting_power, threshold) {
-    return RECOVERY_RATE * (threshold - voting_power)
+    return (threshold - voting_power) / RECOVERY_RATE
 }
 
 function loadTemplate(template) {
@@ -198,10 +198,14 @@ function reply(author, permlink, type) {
 }
 
 function downvote(author, permlink, resister) {
-    return steem.api.getAccountsAsync([ resister.username ]).then((account) => {
-        var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-        recovery_wait = time_needed_to_recover(voting_power, resister.threshold) / 60
-        return account
+    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
+        if (accounts && accounts.length > 0) {
+            const account = accounts[0];
+            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
+            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
+            return account
+        }
     })
     .then((account) => {
         // Reschedule vote
@@ -230,10 +234,14 @@ function downvote(author, permlink, resister) {
 
 function upvote(author, permlink, resister) {
     var recovery_wait = 0
-    return steem.api.getAccountsAsync([ resister.username ]).then((account) => {
-        var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-        recovery_wait = time_needed_to_recover(voting_power, resister.threshold) / 60
-        return account
+    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
+        if (accounts && accounts.length > 0) {
+            const account = accounts[0];
+            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
+            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
+            return account
+        }
     })
     .then((account) => {
         // Reschedule vote
@@ -295,10 +303,14 @@ function processComment(comment) {
         .filter((resister) => comment.author == resister.username)
         .each((resister) => {
             var recovery_wait = 0
-            return steem.api.getAccountsAsync([ user ]).then((account) => {
-                var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-                recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-                return account
+            return steem.api.getAccountsAsync([ user ]).then((accounts) => {
+                if (accounts && accounts.length > 0) {
+                    const account = accounts[0];
+                    console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
+                    var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+                    recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
+                    return account
+                }
             })
             .then((account) => {
                 // Reschedule vote
