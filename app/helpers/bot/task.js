@@ -124,7 +124,7 @@ function is_active(resister) {
 }
 
 function processDownvote(vote) {
-    console.log("Upvoting ", vote)
+    console.log('Processing vote ', vote)
     return collectiveUpvote(vote.author, vote.permlink)
 }
 
