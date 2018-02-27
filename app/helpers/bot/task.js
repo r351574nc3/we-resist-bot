@@ -139,7 +139,7 @@ function processUpvote(vote) {
             // Not a self-vote
             Promise.reject("Not a self vote")
         })
-        .catch(err => {
+        .catch((err) => {
             console.log(err)
         })
 }
@@ -153,8 +153,21 @@ function processUnvote(vote) {
 }
 
 function invite(author, permlink) {
-    return reply(author, permlink, "invite");
+    return is_already_replied_to(author, permlink)
+        .then((found) => {
+            if (!found) {
+                return reply(author, permlink, "invite")
+            }
+            return found;
+        });
 }
+
+function is_already_replied_to(author, permlink) {
+    return steem.api.getContentRepliesAsync(author, permlink)
+        .filter((reply) => user == reply.author)
+        .then((replies) => { return replies.length > 0 })
+}
+
 
 function reply(author, permlink, type) {
     var context = {
@@ -185,8 +198,34 @@ function reply(author, permlink, type) {
 }
 
 function downvote(author, permlink, resister) {
+    return steem.api.getAccountsAsync([ resister.username ]).then((account) => {
+        var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+        recovery_wait = time_needed_to_recover(voting_power, resister.threshold) / 60
+        return account
+    })
+    .then((account) => {
+        // Reschedule vote
+        if (recovery_wait > 0) {
+            console.log("Rescheduling ", recovery_wait, " minutes to recover")
+            var later = moment().add(recovery_wait, 'minutes').toDate()
+            schedule.scheduleJob(later, function() {
+                downvote(author, permlink, resister)
+            })
+            return account
+        }
+        return vote(author, permlink, resister, resister.downvoteWeight * -100)
+            .then((promise) => { 
+                return is_already_replied_to(author, permlink) 
+                    .then((found) => { 
+                        if (!found) {
+                            return reply(author, permlink, "downvote") 
+                        }
+                        return found;
+                    });
+            });
+            
+    })
     return vote(author, permlink, resister, resister.downvoteWeight * -100)
-        .then((promise) => { return reply(author, permlink, "downvote") });
 }
 
 function upvote(author, permlink, resister) {
@@ -199,15 +238,23 @@ function upvote(author, permlink, resister) {
     .then((account) => {
         // Reschedule vote
         if (recovery_wait > 0) {
-            var later = moment().add(recovery_wait, 'minutes').toDate()
             console.log("Rescheduling ", recovery_wait, " minutes to recover")
+            var later = moment().add(recovery_wait, 'minutes').toDate()
             schedule.scheduleJob(later, function() {
-                upvote(author, permlink, resister, resister.upvoteWeight * 100)
+                upvote(author, permlink, resister)
             })
             return account
         }
         return vote(author, permlink, resister, resister.upvoteWeight * 100)
-            .then((promise) => { return reply(author, permlink, "upvote") });
+            .then((promise) => {
+                return is_already_replied_to(author, permlink)
+                    .then((found) => {
+                        if (!found) { // we we haven't replied yet
+                            return reply(author, permlink, "upvote") 
+                        }
+                        return found;
+                    });
+            });
     })
 }
 
@@ -278,7 +325,7 @@ function execute() {
                     processComment(result[1]);
                     break;
                 case 'vote':
-                    processVote(new Vote(result[1]))
+                    processVote(new Vote(result[1]))                    
                     break;
                 case 'unvote':
                     processUnvote(new Vote(result[1]))
