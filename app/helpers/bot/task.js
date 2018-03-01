@@ -3,7 +3,7 @@
 const Promise = require('bluebird')
 const steem = Promise.promisifyAll(require('steem'))
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif } = require('../../config')
+const { user, wif, sc2_secret } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -12,6 +12,8 @@ const Op = Sequelize.Op;
 const Handlebars = require('handlebars')
 const fs = Promise.promisifyAll(require('fs'))
 const path = require('path')
+const rp = require('request-promise');
+
 
 const UNVOTE_WEIGHT = 0
 
@@ -27,6 +29,13 @@ const DAYS_TO_100_PERCENT = 100 / PERCENT_PER_DAY
 const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PER_HOUR
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
 const DEFAULT_THRESHOLD = 9500
+
+const api = sc2.Initialize({
+    app: 'we-resist',
+    callbackURL: 'https://we-resist-bot.herokuapp.com/',
+    accessToken: '',
+    scope: ['vote', 'comment', 'offline']
+  })
 
 
 function current_voting_power(vp_last, last_vote) {
@@ -96,10 +105,13 @@ function processVote(vote) {
         return processUpvote(vote)
     }
 
-    if (vote.is_for_resister()) {
-        return processDownvote(vote)
-    }
-    return invite(vote.author, vote.permlink);
+    vote.is_for_resister()
+        .then((it_is) => {
+            if (it_is) {
+                return processDownvote(vote)
+            }
+            return invite(vote.author, vote.permlink);
+        })
 }
 
 /**
@@ -119,8 +131,18 @@ function list_of_resisters() {
     })
 }
 
-function is_active(resister) {
-    return true
+function fetch_access_token(resister) {
+    return rp({
+        method: "POST",
+        uri: "https://v2.steemconnect.com/api/oauth2/token",
+        body: {
+          refresh_token: resister.refresh_token,
+          client_id: "we-resist",
+          client_secret: sc2_secret,
+          scope: "vote,comment,offline"
+        },
+        json: true
+      })
 }
 
 function processDownvote(vote) {
@@ -198,6 +220,7 @@ function reply(author, permlink, type) {
 }
 
 function downvote(author, permlink, resister) {
+    var recovery_wait = 0
     return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
         if (accounts && accounts.length > 0) {
             const account = accounts[0];
@@ -271,6 +294,33 @@ function unvote(author, permlink, resister) {
 }
 
 function vote(author, permlink, resister, weight) {
+
+    if (resister.refresh_token) {
+        return fetch_access_token(resister)
+            .then((data) => {
+                api.setAccessToken(data.access_token)
+
+                const retval = api.vote(resister.username, 
+                        author,
+                        permlink,
+                        weight,
+                        function(err, results) {
+                            if (err) {
+                                return Promise.reject(err);
+                            }
+                            return Promise.resolve(results);
+                        })
+                api.setAccessToken('')
+                return retval;                
+            })
+            .then((results) => {
+                console.log("Vote result: ", results);
+            })
+            .catch((exception) => {
+                console.log("Unable to vote ", exception)
+            })
+    }
+
     return steem.broadcast.voteAsync(
             resister.wif, 
             resister.username, 
@@ -327,20 +377,22 @@ function processComment(comment) {
         })
 }
 
-function execute() {
+function execute() {    
+    processVote(new Vote({ permlink: "q4ke0ntg", author: "melissakellie", voter: "grumpycat", weight: -10000}))
+
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
         if (result && result.length > 0) {
             var operation_name = result[0]
             switch(operation_name) {
                 case 'comment':
-                    processComment(result[1]);
+                    // processComment(result[1]);
                     break;
                 case 'vote':
-                    processVote(new Vote(result[1]))                    
+                    // processVote(new Vote(result[1]))
                     break;
                 case 'unvote':
-                    processUnvote(new Vote(result[1]))
+                    // processUnvote(new Vote(result[1]))
                     break;
                 default:
             }   

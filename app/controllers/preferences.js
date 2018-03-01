@@ -1,11 +1,13 @@
 `use strict`
 
-const { db_url } = require('../config')
+const { db_url, sc2_secret } = require('../config')
 const Sequelize = require('sequelize')
 const models = require('../../models')
 const Promise = require('bluebird')
 const sc2 = Promise.promisifyAll(require ('sc2-sdk'))
 const steem = Promise.promisifyAll(require('steem'))
+const rp = require('request-promise');
+const querystring = require("querystring");
 
 var pg = require('pg');
 pg.defaults.ssl = true;
@@ -19,17 +21,18 @@ preferences = {
 }
 
 function get_preferences(req, res) {
-    var username = req.params.username
+    let username = req.params.username
+    let access_token = req.query.access_token
+    let refresh_token = req.query.refresh_token
 
-    var api = sc2.Initialize({
+    let api = sc2.Initialize({
         app: 'we-resist',
         callbackURL: 'https://we-resist-bot.herokuapp.com/',
-        accessToken: req.query.access_token,
-        scope: ['vote', 'comment']
+        accessToken: access_token,
+        scope: ['vote', 'comment', 'offline']
       })
-
+    
     var ok = false
-
     return new Promise((resolve, reject) => {
         let retval = false
         api.me(function (err, me) {
@@ -43,7 +46,7 @@ function get_preferences(req, res) {
             })
         })
         .then((username) => {
-            return handle_prefs_from_database(username, res)
+            return handle_prefs_from_database(username, refresh_token, access_token, res)
         })
         .catch(err => {
             console.log("Allowed to access preferences? ", err)
@@ -51,12 +54,14 @@ function get_preferences(req, res) {
         })
 }
 
-function handle_prefs_from_database(username, res) {
+function handle_prefs_from_database(username, refresh_token, access_token, res) {
     return models.Preferences.findOne({where: { username: username } })
         .then(prefs => {
             var preferences = prefs.dataValues
             res.render('pages/index', {
                 redirect: 'https://we-resist-bot.herokuapp.com/',
+                refresh_token: refresh_token,
+                access_token: access_token,
                 username: username,
                 preferences: preferences
             })
@@ -70,6 +75,8 @@ function handle_prefs_from_database(username, res) {
             .then((preferences) => {
                 res.render('pages/index', {
                     redirect: 'https://we-resist-bot.herokuapp.com/',
+                    refresh_token: refresh_token,
+                    access_token: access_token,
                     username: username,
                     preferences: preferences
                 })
@@ -102,16 +109,16 @@ function post_preferences(req, res) {
     var updatedValue = {
         upvoteWeight: req.body.upvoteWeight,
         downvoteWeight: req.body.downvoteWeight,
-        threshold: req.body.threshold
+        threshold: req.body.threshold,
+        refreshToken: req.body.refresh_token
     }
 
     var api = sc2.Initialize({
         app: 'we-resist',
         callbackURL: 'https://we-resist-bot.herokuapp.com/',
         accessToken: req.body.access_token,
-        scope: ['vote', 'comment']
+        scope: ['vote', 'comment', 'offline']
       })
-
 
     return new Promise((resolve, reject) => {
         let retval
@@ -123,21 +130,6 @@ function post_preferences(req, res) {
             })
         })
         .then((username) => {
-            if (req.body.wif !== '') {
-                if (validateWif(req.body.wif)) {
-                    updatedValue.wif = req.body.wif
-                }
-                else {
-                    res.status(400)
-                        .send({ status: 400,
-                            error: {
-                                field: 'wif',
-                                message: 'Invalid Private Key'
-                            }
-                        })
-                    return
-                }
-            }
         
             console.log("Looking for preferences for ", username)
             models.Preferences.find({ where: { username: username }})
