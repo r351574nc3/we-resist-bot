@@ -61,14 +61,6 @@
               </div>
             </div>
 
-            <div class="mb-3">
-              <label for="wif">Private Posting Key</label>
-              <input type="password" class="form-control" id="wif" placeholder="" required>
-              <div class="invalid-feedback">
-                Please enter a valid Private Posting Key.
-              </div>
-            </div>
-
             <hr class="mb-3">
             <%if (preferences) {%>
             <input type="hidden" name="uid" id="uid" value="<%=preferences.id%>" />
@@ -182,10 +174,6 @@
                     modal.find('.modal-body').text('Your preferences saved successfully.')
                     modal.modal('show')
                 })
-                .fail(function(err) {
-                    $('#wif').addClass('is-invalid')
-                    console.log(err)
-                })
                 .always(function() {
                     $('#saveBtn').prop('disabled', false)
                 })
@@ -201,10 +189,6 @@
                 modal.find('.modal-title').text('Notification')
                 modal.find('.modal-body').text('Your preferences have been deleted. You will no longer participate in we-resist')
                 modal.modal('show')
-            })
-            .fail(function(err) {
-                $('#wif').addClass('is-invalid')
-                console.log(err)
             })
             .always(function() {
                 $('#confirmDelete').prop('disabled', false)
@@ -241,19 +225,12 @@
     }
 
     function assemble_data() {
-        var pairs = window.location.href.slice(window.location.href.indexOf('?') + 1).split('&');
-        var qs = {}
-        for (var idx = 0; idx < pairs.length; idx++)  {
-            var pair = pairs[idx].split('=')
-            qs[pair[0]] = pair[1]
-        }
-
         var retval = {
-            access_token: qs.access_token,
+            access_token: "<%=access_token%>", 
+            refresh_token: "<%=refresh_token%>",
             upvoteWeight: parseFloat($('#upvoteWeightText').val()),
             downvoteWeight: parseFloat($('#downvoteWeightText').val()),
-            threshold: parseFloat($('#thresholdText').val()),
-            wif: $('#wif').val()
+            threshold: parseFloat($('#thresholdText').val())
         }
 
         if ($('#uid').length) {
