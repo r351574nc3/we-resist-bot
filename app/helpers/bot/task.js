@@ -3,7 +3,7 @@
 const Promise = require('bluebird')
 const steem = Promise.promisifyAll(require('steem'))
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif, sc2_secret } = require('../../config')
+const { user, wif, sc2_secret, grumpy } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -28,7 +28,7 @@ const MAX_VOTING_POWER = 10000
 const DAYS_TO_100_PERCENT = 100 / PERCENT_PER_DAY
 const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PER_HOUR
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
-const DEFAULT_THRESHOLD = 9500
+const DEFAULT_THRESHOLD = 9000
 
 const api = sc2.Initialize({
     app: 'we-resist',
@@ -53,11 +53,7 @@ function loadTemplate(template) {
 
 // Stubbed function
 function list_of_grumpy_users() {
-    let grumps = []
-    grumps.push('grumpycat')
-    return new Promise((resolve, reject) => {
-        resolve(grumps)
-    })
+    return grumpy;
 }
 
 class Vote {
@@ -78,13 +74,11 @@ class Vote {
 
     is_voter_grumpy() {
         // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
-        return this.voter == 'grumpycat'
+        return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
     }
 
     is_author_grumpy() {
-        return list_of_grumpy_users()
-            .filter((user) => this.author == user)
-            .then((users) => { return users.length > 0 })
+        return list_of_grumpy_users().filter((user) => this.author == user).length > 0
     }
 
     is_for_resister() {
@@ -126,7 +120,7 @@ function processVote(vote) {
  */
 function list_of_resisters() {
     return models.Preferences.findAll( {
-        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ],
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
         logging: (query) => {}
     })
 }
@@ -136,7 +130,7 @@ function fetch_access_token(resister) {
         method: "POST",
         uri: "https://v2.steemconnect.com/api/oauth2/token",
         body: {
-          refresh_token: resister.refresh_token,
+          refresh_token: resister.refreshToken,
           client_id: "we-resist",
           client_secret: sc2_secret,
           scope: "vote,comment,offline"
@@ -151,19 +145,18 @@ function processDownvote(vote) {
 }
 
 function processUpvote(vote) {
-    return vote.is_author_grumpy()
-        .then((is_grumpy) => {
-            if (is_grumpy) { // Test for self-vote
-                console.log("Downvoting ", vote)
-                return collectiveDownvote(vote.author, vote.permlink)
-            }
+    return new Promise((resolve, reject) => {
+        if (vote.is_author_grumpy()) {
+            console.log("Downvoting ", vote)
+            return collectiveDownvote(vote.author, vote.permlink)
+        }
 
-            // Not a self-vote
-            Promise.reject("Not a self vote")
-        })
-        .catch((err) => {
-            console.log(err)
-        })
+        // Not a self-vote
+        Promise.reject("Not a self vote")
+    })
+    .catch((err) => {
+        console.log(err)
+    })
 }
 
 function processUnvote(vote) {
@@ -295,7 +288,8 @@ function unvote(author, permlink, resister) {
 
 function vote(author, permlink, resister, weight) {
 
-    if (resister.refresh_token) {
+    console.log("Voting for ", resister.username)
+    if (resister.refreshToken) {
         return fetch_access_token(resister)
             .then((data) => {
                 api.setAccessToken(data.access_token)
@@ -377,8 +371,18 @@ function processComment(comment) {
         })
 }
 
-function execute() {    
-    processVote(new Vote({ permlink: "q4ke0ntg", author: "melissakellie", voter: "grumpycat", weight: -10000}))
+function execute() {
+    /*
+    processVote(new Vote({ permlink: "re-themobilewriter-re-the-resistance-announcement-strategy-update-of-the-resistance-20180303t164457840z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-michaeldavid-re-grumpycat-re-michaeldavid-re-grumpycat-re-michaeldavid-re-grumpycat-re-michaeldavid-re-erodedthoughts-defend-yourself-against-grumpycat-20180303t180131830z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-alamin7-monpura-park-at-gazipur-20180303t204459348z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-anoniam-introducing-steem-leagues-or-earn-steem-by-participitating-in-steem-based-cricket-leagues-20180303t084738104z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-the-resistance-re-grumpycat-re-the-resistance-re-grumpycat-re-the-resistance-re-grumpycat-re-michaeldavid-re-guidescrypto-re-grumpycat-re-guidescrypto-repost-tron-updated-guide-20180303t170230367z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-jordanx2-450ea6a0-1bec-11e8-9f46-298b69155dc5-20180303t074236545z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-efrenmangubat-the-everlasting-love-20180303t074154769z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-vladivostok-moscow-station-20180303t074132942z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-the-resistance-announcement-strategy-update-of-the-resistance-20180303t164032439z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
+    */
 
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
@@ -386,13 +390,13 @@ function execute() {
             var operation_name = result[0]
             switch(operation_name) {
                 case 'comment':
-                    // processComment(result[1]);
+                    processComment(result[1]);
                     break;
                 case 'vote':
-                    // processVote(new Vote(result[1]))
+                    processVote(new Vote(result[1]))
                     break;
                 case 'unvote':
-                    // processUnvote(new Vote(result[1]))
+                    processUnvote(new Vote(result[1]))
                     break;
                 default:
             }   
