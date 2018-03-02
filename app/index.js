@@ -6,6 +6,8 @@ const PORT = process.env.PORT || 5000
 const Preferences = require('./controllers/preferences')
 const Promise = require('bluebird')
 const sc2 = Promise.promisifyAll(require ('sc2-sdk'))
+const { db_url, sc2_secret } = require('./config')
+const rp = require('request-promise');
 
 var startup = moment()
 
@@ -20,17 +22,31 @@ app.get('/', function (req, res) {
     app: 'we-resist',
     callbackURL: 'https://we-resist-bot.herokuapp.com/',
     accessToken: req.query.access_token,
-    scope: ['vote', 'comment']
+    scope: ['vote', 'comment', 'offline']
   })
 
-  if (!req.query.access_token) {
-    return res.redirect(api.getLoginURL())
+  if (!req.query.access_token && !req.query.code) {
+    // return res.redirect(api.getLoginURL());
+    return res.redirect(`https://v2.steemconnect.com/oauth2/authorize?client_id=we-resist&response_type=code&redirect_uri=https%3A%2F%2Fwe-resist-bot.herokuapp.com%2F&scope=vote,comment,offline`)
   }
 
-  api.me(function (err, me) {
-    var qs = req.originalUrl.substring(req.originalUrl.indexOf("?"))
-    res.redirect('/@' + req.query.username + '/preferences' + qs)
+  return rp({
+    method: "POST",
+    uri: "https://steemconnect.com/api/oauth2/token",
+    body: {
+      response_type: "refresh",
+      code: req.query.code,
+      client_id: "we-resist",
+      client_secret: sc2_secret,
+      scope: "vote,comment,offline"
+    },
+    json: true
   })
+  .then((results) => {
+    let qs = "?access_token=" + results.access_token + "&refresh_token=" + results.refresh_token + "&username=" + results.username
+    return res.redirect('/@' + results.username + '/preferences' + qs)
+  })
+
 })
 
 app.get('/@:username/preferences', Preferences.get)
