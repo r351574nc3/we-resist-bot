@@ -1,13 +1,17 @@
 ### WE ARE THE RESISTANCE!
 
-You are bullied by @grumpycat on your post.
-We are resisting this.
+You are bullied by @GrumpyCat on your post.
 
-Check this link,spread the word and join us if you would agree.
-https://steemit.com/the-resistance/@the-resistance/we-declare-resistance
+* @GrumpyCat is flagging innocent people and calling them "collateral damage"!
+* @GrumpyCat is trying to impose his rules by using your SP on ones weaker than him!
+* @GrumpyCat has rejected all the diplomatic proposals we have brought so far!
+
+@The-Resistance is here to stop this and protect the weaker ones from the tyranny of @GrumpyCat  
+
+Join our bot We-Resist to protect minnows  https://we-resist-bot.herokuapp.com
+Come to our house to meet with the community https://discord.gg/qMWCbWR
 
 https://steemitimages.com/256x512/https://steemitimages.com/DQmasLjbAiiPJKeiM6GHZRb9bgghMLQKP4iiUp3jCdkVJyS/image.png
 ### @GrumpyCat, to your tyranny WE-RESIST
 
 The Resistance
-Discord: https://discord.gg/qMWCbWR
