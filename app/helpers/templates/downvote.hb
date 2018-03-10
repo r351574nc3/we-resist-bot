@@ -2,6 +2,10 @@
 
 @GrumpyCat
 
+* You are flagging innocent people and calling them "collateral damage"!
+* You are trying to impose your rules by using your SP on ones weaker than you!
+* You have rejected all the diplomatic proposals we have brought so far!
+
 Your self upvote is flagged by The-Resistance team using the WE-RESIST bot.
 We will be resisting with a team, stronger each day, unless you stop downvoting innocent people.
 
