@@ -1,9 +1,9 @@
 'use strict'
 
 const Promise = require('bluebird')
-const steem = Promise.promisifyAll(require('steem'))
+const steem = require('steem')
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif, sc2_secret, grumpy } = require('../../config')
+const { user, wif, sc2_secret, steemit_url, grumpy, blacklisted } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -37,9 +37,15 @@ const api = sc2.Initialize({
     scope: ['vote', 'comment', 'offline']
   })
 
+steem.api.setWebSocket(steemit_url)
+
+let heartbeat = moment();
+let counter = 0
 
 function current_voting_power(vp_last, last_vote) {
-    var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
+    console.log("Comparing %s to %s ", moment().utc().add(7, 'hours').local().toISOString(), moment(last_vote).utc().local().toISOString())
+
+    var seconds_since_vote = moment().utc().add(7, 'hours').local().diff(moment(last_vote).utc().local(), 'seconds')
     return (RECOVERY_RATE * seconds_since_vote) + vp_last
 }
 
@@ -54,6 +60,11 @@ function loadTemplate(template) {
 // Stubbed function
 function list_of_grumpy_users() {
     return grumpy;
+}
+
+// Stubbed function
+function list_of_blacklisted_users() {
+    return blacklisted;
 }
 
 class Vote {
@@ -72,6 +83,10 @@ class Vote {
         return this.weight > 0
     }
 
+    is_downvote_worthy() {
+        return this.weight > 300;
+    }
+
     is_voter_grumpy() {
         // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
         return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
@@ -79,6 +94,10 @@ class Vote {
 
     is_author_grumpy() {
         return list_of_grumpy_users().filter((user) => this.author == user).length > 0
+    }
+
+    is_author_blacklisted() {
+        return list_of_blacklisted_users().filter((user) => this.author == user).length > 0
     }
 
     is_for_resister() {
@@ -89,23 +108,32 @@ class Vote {
 }
 
 function processVote(vote) {
+
     if (!vote.is_voter_grumpy()) {
-         return false
+        return new Promise((resolve, reject) => {
+            resolve(false)
+        })
     }
 
     console.log("processing vote ", vote);
 
-    if (vote.is_upvote()) {
+    if (vote.is_upvote() && vote.is_downvote_worthy()) {
         return processUpvote(vote)
     }
 
-    vote.is_for_resister()
+    return vote.is_for_resister()
         .then((it_is) => {
             if (it_is) {
                 return processDownvote(vote)
             }
             return invite(vote.author, vote.permlink);
         })
+}
+
+function resister_has_token(resister) {
+    return steem.api.getAccountsAsync([ resister.username ])
+        .filter((account) => account.posting.account_auths.filter((auth) => auth[0] == 'we-resist').length > 0)
+        .then((accounts) => accounts.length > 0)
 }
 
 /**
@@ -122,7 +150,7 @@ function list_of_resisters() {
     return models.Preferences.findAll( {
         attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
         logging: (query) => {}
-    })
+    }).filter((user) => resister_has_token(user))
 }
 
 function fetch_access_token(resister) {
@@ -140,8 +168,12 @@ function fetch_access_token(resister) {
 }
 
 function processDownvote(vote) {
-    console.log('Processing vote ', vote)
-    return collectiveUpvote(vote.author, vote.permlink)
+    return new Promise((resolve, reject) => {
+        if (!vote.is_author_blacklisted()) { // Ignore blacklisted users
+            console.log('Processing vote ', vote)
+            return collectiveUpvote(vote.author, vote.permlink)
+        }
+    })
 }
 
 function processUpvote(vote) {
@@ -152,7 +184,7 @@ function processUpvote(vote) {
         }
 
         // Not a self-vote
-        Promise.reject("Not a self vote")
+        return reject("Not a self vote")
     })
     .catch((err) => {
         console.log(err)
@@ -294,23 +326,27 @@ function vote(author, permlink, resister, weight) {
             .then((data) => {
                 api.setAccessToken(data.access_token)
 
-                const retval = api.vote(resister.username, 
-                        author,
-                        permlink,
-                        weight,
-                        function(err, results) {
-                            if (err) {
-                                return Promise.reject(err);
-                            }
-                            return Promise.resolve(results);
-                        })
-                api.setAccessToken('')
-                return retval;                
+                return new Promise((resolve, reject) => {
+                    api.vote(resister.username,
+                            author,
+                            permlink,
+                            weight,
+                            function(err, results) {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                return resolve(results);
+                            })
+                    })
+                    .then((results) => {
+                        api.setAccessToken('')
+                    })
             })
             .then((results) => {
                 console.log("Vote result: ", results);
-            })
-            .catch((exception) => {
+                return results;
+            },
+            (exception) => {
                 console.log("Unable to vote ", exception)
             })
     }
@@ -324,8 +360,8 @@ function vote(author, permlink, resister, weight) {
         )
         .then((results) =>  {
             console.log(results)
-        })
-        .catch((err) => {
+        },
+        (err) => {
             console.log("Vote failed: ", err)
         })
 }
@@ -344,8 +380,10 @@ function collectiveUnvote(author, permlink) {
 
 function processComment(comment) {
     return list_of_resisters()
-        .filter((resister) => comment.author == resister.username)
+        .filter((resister) => comment.author == resister.username &&
+                               comment.author != "the-resistance")
         .each((resister) => {
+            console.log("Processing comment ", comment);
             var recovery_wait = 0
             return steem.api.getAccountsAsync([ user ]).then((accounts) => {
                 if (accounts && accounts.length > 0) {
@@ -371,35 +409,56 @@ function processComment(comment) {
         })
 }
 
-function execute() {
-    /*
-    processVote(new Vote({ permlink: "re-themobilewriter-re-the-resistance-announcement-strategy-update-of-the-resistance-20180303t164457840z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-michaeldavid-re-grumpycat-re-michaeldavid-re-grumpycat-re-michaeldavid-re-grumpycat-re-michaeldavid-re-erodedthoughts-defend-yourself-against-grumpycat-20180303t180131830z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-alamin7-monpura-park-at-gazipur-20180303t204459348z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-anoniam-introducing-steem-leagues-or-earn-steem-by-participitating-in-steem-based-cricket-leagues-20180303t084738104z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-the-resistance-re-grumpycat-re-the-resistance-re-grumpycat-re-the-resistance-re-grumpycat-re-michaeldavid-re-guidescrypto-re-grumpycat-re-guidescrypto-repost-tron-updated-guide-20180303t170230367z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-jordanx2-450ea6a0-1bec-11e8-9f46-298b69155dc5-20180303t074236545z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-efrenmangubat-the-everlasting-love-20180303t074154769z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-vladivostok-moscow-station-20180303t074132942z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-the-resistance-announcement-strategy-update-of-the-resistance-20180303t164032439z", voter: "grumpycat", author: "grumpycat", weight: 10000 }))
-    */
+function mainLoop() {
 
     console.log("Processing votes from stream of operations")
-    steem.api.streamOperations('head', (err, result) => {
-        if (result && result.length > 0) {
-            var operation_name = result[0]
+    steem.api.streamOperations((err, results) => {
+        return new Promise((resolve, reject) => {
+            if (err) {
+                console.log("Unable to stream operations %s", err)
+                return reject(err)
+            }
+            return resolve(results) // results [ "operation name", operation:{} ]
+        }).spread((operation_name, operation) => {
+
+            if (counter % 1000 == 0) {
+                counter = 0
+                console.log("Processing %s on %s", operation, new Date())
+            }
+
             switch(operation_name) {
                 case 'comment':
-                    processComment(result[1]);
+                    if (operation.parent_author == '') {
+                        processComment(operation)
+                            .catch((e) => {
+                                console.log("Failed to process comment ", e)
+                            });
+                    }
                     break;
                 case 'vote':
-                    processVote(new Vote(result[1]))
+                    processVote(new Vote(operation))
+                        .catch((e) => {
+                            console.log("Failed to process vote ", e)
+                        })
                     break;
                 case 'unvote':
-                    processUnvote(new Vote(result[1]))
+                    processUnvote(new Vote(operation))
+                        .catch((e) => {
+                            console.log("Failed to process unvote ", e)
+                        })
                     break;
                 default:
             }   
-        }
+            counter++
+            heartbeat = moment();
+        })
+        .catch((err) => {
+            console.log("Bot died. Restarting ... ", err)
+            mainLoop(); // restart bot since it died
+        })
     })
+}
+
+function execute() {
+    mainLoop();
 }
