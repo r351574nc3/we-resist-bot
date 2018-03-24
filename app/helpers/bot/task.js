@@ -298,12 +298,12 @@ function mainLoop() {
 
             switch(operation_name) {
                 case 'comment':
-                    // if (operation.parent_author == '') {
+                    if (operation.parent_author == '') {
                         processComment(operation)
                             .catch((e) => {
                                 console.log("Failed to process comment ", e)
                             });
-                    //}
+                    }
                     break;
                 case 'vote':
                     processVote(new Vote(operation))

@@ -53,7 +53,7 @@ function check_can_vote(resister) {
             const account = accounts[0];
             console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
             var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-            if (voting_power > resister.threshold) {
+            if (!resister.threshold || voting_power > resister.threshold) {
                 return true;
             }
         }
