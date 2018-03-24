@@ -15,7 +15,6 @@ service:
 steem:
   name: please fill this in
   wif: please fill this in
-  secret: please fill this in
 
 persistence:
   url: please fill this in

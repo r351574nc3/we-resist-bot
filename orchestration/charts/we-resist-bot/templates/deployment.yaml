@@ -26,8 +26,6 @@ spec:
               value: "{{ .Values.steem.wif }}"
             - name: DATABASE_URL
               value: "{{ .Values.persistence.url }}"
-            - name: SC2_CLIENT_SECRET
-              value: "{{ .Values.steem.secret }}"
           ports:
             - containerPort: {{ .Values.service.internalPort }}
           resources:
