@@ -51,6 +51,7 @@ function check_can_vote(resister) {
     return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
         if (accounts && accounts.length > 0) {
             const account = accounts[0];
+            console.log("Voting threshold for %s: %s", resister.username, resister.threshold)
             console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
             var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
             if (!resister.threshold || voting_power > resister.threshold) {
