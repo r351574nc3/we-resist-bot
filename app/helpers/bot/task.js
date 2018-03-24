@@ -21,6 +21,9 @@ module.exports = {
     execute
 }
 
+let VOTING = {};
+let COMMENTS = {};
+
 const SECONDS_PER_HOUR = 3600
 const PERCENT_PER_DAY = 20
 const HOURS_PER_DAY = 24
@@ -45,10 +48,6 @@ function current_voting_power(vp_last, last_vote) {
 
 function time_needed_to_recover(voting_power, threshold) {
     return (threshold - voting_power) / RECOVERY_RATE
-}
-
-function loadTemplate(template) {
-    return fs.readFileAsync(template, 'utf8')
 }
 
 // Stubbed function
@@ -131,20 +130,6 @@ function list_of_resisters() {
     })
 }
 
-function fetch_access_token(resister) {
-    return rp({
-        method: "POST",
-        uri: "https://v2.steemconnect.com/api/oauth2/token",
-        body: {
-          refresh_token: resister.refresh_token,
-          client_id: "we-resist",
-          client_secret: sc2_secret,
-          scope: "vote,comment,offline"
-        },
-        json: true
-      })
-}
-
 function processDownvote(vote) {
     console.log('Processing vote ', vote)
     return collectiveUpvote(vote.author, vote.permlink)
@@ -192,148 +177,38 @@ function is_already_replied_to(author, permlink) {
 
 
 function reply(author, permlink, type) {
-    var context = {
-    }
-
-    return loadTemplate(path.join(__dirname, '..', 'templates', `${type}.hb`))
-        .then((template) => {
-            var templateSpec = Handlebars.compile(template)
-            return templateSpec(context)
-        })
-        .then((message) => {
-            var new_permlink = 're-' + author 
-                + '-' + permlink 
-                + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
-            steem.broadcast.commentAsync(
-                wif,
-                author, // Leave parent author empty
-                permlink, // Main tag
-                user, // Author
-                new_permlink, // Permlink
-                new_permlink,
-                message, // Body
-                { tags: [], app: 'we-resist-bot/0.1.0' }
-            ).then((results) => {
-                console.log(results)
-            })
-        })
+    COMMENTS.push({ author: author, permlink: permlink, type: type })
 }
 
 function downvote(author, permlink, resister) {
-    var recovery_wait = 0
-    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
-        if (accounts && accounts.length > 0) {
-            const account = accounts[0];
-            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-            return account
-        }
-    })
-    .then((account) => {
-        // Reschedule vote
-        if (recovery_wait > 0) {
-            console.log("Rescheduling ", recovery_wait, " minutes to recover")
-            var later = moment().add(recovery_wait, 'minutes').toDate()
-            schedule.scheduleJob(later, function() {
-                downvote(author, permlink, resister)
-            })
-            return account
-        }
-        return vote(author, permlink, resister, resister.downvoteWeight * -100)
-            .then((promise) => { 
-                return is_already_replied_to(author, permlink) 
-                    .then((found) => { 
-                        if (!found) {
-                            return reply(author, permlink, "downvote") 
-                        }
-                        return found;
-                    });
-            });
-            
-    })
-    return vote(author, permlink, resister, resister.downvoteWeight * -100)
+    vote(author, permlink, resister, resister.downvoteWeight * -100)
+    return is_already_replied_to(author, permlink) 
+        .then((found) => { 
+            if (!found) {
+                return reply(author, permlink, "downvote") 
+            }   
+            return found;
+        });
 }
 
 function upvote(author, permlink, resister) {
     var recovery_wait = 0
-    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
-        if (accounts && accounts.length > 0) {
-            const account = accounts[0];
-            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-            return account
-        }
-    })
-    .then((account) => {
-        // Reschedule vote
-        if (recovery_wait > 0) {
-            console.log("Rescheduling ", recovery_wait, " minutes to recover")
-            var later = moment().add(recovery_wait, 'minutes').toDate()
-            schedule.scheduleJob(later, function() {
-                upvote(author, permlink, resister)
-            })
-            return account
-        }
-        return vote(author, permlink, resister, resister.upvoteWeight * 100)
-            .then((promise) => {
-                return is_already_replied_to(author, permlink)
-                    .then((found) => {
-                        if (!found) { // we we haven't replied yet
-                            return reply(author, permlink, "upvote") 
-                        }
-                        return found;
-                    });
-            });
-    })
+    vote(author, permlink, resister, resister.upvoteWeight * 100)
+    return is_already_replied_to(author, permlink)
+        .then((found) => {
+            if (!found) { // we we haven't replied yet
+                return reply(author, permlink, "upvote") 
+            }
+            return found;
+        });
 }
 
 function unvote(author, permlink, resister) {
-    return vote(author, permlink, resister, UNVOTE_WEIGHT)
+    vote(author, permlink, resister, UNVOTE_WEIGHT)
 }
 
 function vote(author, permlink, resister, weight) {
-
-    if (resister.refresh_token) {
-        return fetch_access_token(resister)
-            .then((data) => {
-                api.setAccessToken(data.access_token)
-
-                const retval = api.vote(resister.username, 
-                        author,
-                        permlink,
-                        weight,
-                        function(err, results) {
-                            if (err) {
-                                return Promise.reject(err);
-                            }
-                            return Promise.resolve(results);
-                        })
-                api.setAccessToken('')
-                return retval;                
-            })
-            .then((results) => {
-                console.log("Vote result: ", results);
-            })
-            .catch((exception) => {
-                console.log("Unable to vote ", exception)
-            })
-    }
-
-    return steem.broadcast.voteAsync(
-            resister.wif, 
-            resister.username, 
-            author,
-            permlink,
-            weight
-        )
-        .then((results) =>  {
-            console.log(results)
-        })
-        .catch((err) => {
-            console.log("Vote failed: ", err)
-        })
+    VOTING.push({ author: author, permlink: permlink, resister: resister, weight: weight })
 }
 
 function collectiveDownvote(author, permlink) {
@@ -386,16 +261,27 @@ function execute() {
             var operation_name = result[0]
             switch(operation_name) {
                 case 'comment':
-                    // processComment(result[1]);
+                    if (operation.parent_author == '') {
+                        processComment(operation)
+                            .catch((e) => {
+                                console.log("Failed to process comment ", e)
+                            });
+                    }
                     break;
                 case 'vote':
-                    // processVote(new Vote(result[1]))
+                    processVote(new Vote(result[1]))
                     break;
                 case 'unvote':
-                    // processUnvote(new Vote(result[1]))
+                    processUnvote(new Vote(result[1]))
                     break;
                 default:
             }   
         }
     })
+}
+
+function execute(voting_queue, comment_queue) {
+    VOTING = voting_queue;
+    COMMENTS = comment_queue;
+    mainLoop();
 }
