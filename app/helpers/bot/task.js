@@ -1,9 +1,9 @@
 'use strict'
 
 const Promise = require('bluebird')
-const steem = Promise.promisifyAll(require('steem'))
+const steem = require('steem')
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif, sc2_secret } = require('../../config')
+const { user, wif, sc2_secret, steemit_url, grumpy, blacklisted } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -21,6 +21,9 @@ module.exports = {
     execute
 }
 
+let VOTING = {};
+let COMMENTS = {};
+
 const SECONDS_PER_HOUR = 3600
 const PERCENT_PER_DAY = 20
 const HOURS_PER_DAY = 24
@@ -28,7 +31,7 @@ const MAX_VOTING_POWER = 10000
 const DAYS_TO_100_PERCENT = 100 / PERCENT_PER_DAY
 const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PER_HOUR
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
-const DEFAULT_THRESHOLD = 9500
+const DEFAULT_THRESHOLD = 9000
 
 const api = sc2.Initialize({
     app: 'we-resist',
@@ -37,9 +40,15 @@ const api = sc2.Initialize({
     scope: ['vote', 'comment', 'offline']
   })
 
+steem.api.setWebSocket(steemit_url)
+
+let heartbeat = moment();
+let counter = 0
 
 function current_voting_power(vp_last, last_vote) {
-    var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
+    console.log("Comparing %s to %s ", moment().utc().add(7, 'hours').local().toISOString(), moment(last_vote).utc().local().toISOString())
+
+    var seconds_since_vote = moment().utc().add(7, 'hours').local().diff(moment(last_vote).utc().local(), 'seconds')
     return (RECOVERY_RATE * seconds_since_vote) + vp_last
 }
 
@@ -47,17 +56,14 @@ function time_needed_to_recover(voting_power, threshold) {
     return (threshold - voting_power) / RECOVERY_RATE
 }
 
-function loadTemplate(template) {
-    return fs.readFileAsync(template, 'utf8')
+// Stubbed function
+function list_of_grumpy_users() {
+    return grumpy;
 }
 
 // Stubbed function
-function list_of_grumpy_users() {
-    let grumps = []
-    grumps.push('grumpycat')
-    return new Promise((resolve, reject) => {
-        resolve(grumps)
-    })
+function list_of_blacklisted_users() {
+    return blacklisted;
 }
 
 class Vote {
@@ -76,15 +82,21 @@ class Vote {
         return this.weight > 0
     }
 
+    is_downvote_worthy() {
+        return this.weight > 300;
+    }
+
     is_voter_grumpy() {
         // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
-        return this.voter == 'grumpycat'
+        return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
     }
 
     is_author_grumpy() {
-        return list_of_grumpy_users()
-            .filter((user) => this.author == user)
-            .then((users) => { return users.length > 0 })
+        return list_of_grumpy_users().filter((user) => this.author == user).length > 0
+    }
+
+    is_author_blacklisted() {
+        return list_of_blacklisted_users().filter((user) => this.author == user).length > 0
     }
 
     is_for_resister() {
@@ -95,23 +107,32 @@ class Vote {
 }
 
 function processVote(vote) {
+
     if (!vote.is_voter_grumpy()) {
-         return false
+        return new Promise((resolve, reject) => {
+            resolve(false)
+        })
     }
 
     console.log("processing vote ", vote);
 
-    if (vote.is_upvote()) {
+    if (vote.is_upvote() && vote.is_downvote_worthy()) {
         return processUpvote(vote)
     }
 
-    vote.is_for_resister()
+    return vote.is_for_resister()
         .then((it_is) => {
             if (it_is) {
                 return processDownvote(vote)
             }
             return invite(vote.author, vote.permlink);
         })
+}
+
+function resister_has_token(resister) {
+    return steem.api.getAccountsAsync([ resister.username ])
+        .filter((account) => account.posting.account_auths.filter((auth) => auth[0] == 'we-resist').length > 0)
+        .then((accounts) => accounts.length > 0)
 }
 
 /**
@@ -126,44 +147,33 @@ function processVote(vote) {
  */
 function list_of_resisters() {
     return models.Preferences.findAll( {
-        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ],
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
         logging: (query) => {}
-    })
-}
-
-function fetch_access_token(resister) {
-    return rp({
-        method: "POST",
-        uri: "https://v2.steemconnect.com/api/oauth2/token",
-        body: {
-          refresh_token: resister.refresh_token,
-          client_id: "we-resist",
-          client_secret: sc2_secret,
-          scope: "vote,comment,offline"
-        },
-        json: true
-      })
+    }).filter((user) => resister_has_token(user))
 }
 
 function processDownvote(vote) {
-    console.log('Processing vote ', vote)
-    return collectiveUpvote(vote.author, vote.permlink)
+    return new Promise((resolve, reject) => {
+        if (!vote.is_author_blacklisted()) { // Ignore blacklisted users
+            console.log('Processing vote ', vote)
+            return collectiveUpvote(vote.author, vote.permlink)
+        }
+    })
 }
 
 function processUpvote(vote) {
-    return vote.is_author_grumpy()
-        .then((is_grumpy) => {
-            if (is_grumpy) { // Test for self-vote
-                console.log("Downvoting ", vote)
-                return collectiveDownvote(vote.author, vote.permlink)
-            }
+    return new Promise((resolve, reject) => {
+        if (vote.is_author_grumpy()) {
+            console.log("Downvoting ", vote)
+            return collectiveDownvote(vote.author, vote.permlink)
+        }
 
-            // Not a self-vote
-            Promise.reject("Not a self vote")
-        })
-        .catch((err) => {
-            console.log(err)
-        })
+        // Not a self-vote
+        return reject("Not a self vote")
+    })
+    .catch((err) => {
+        console.log(err)
+    })
 }
 
 function processUnvote(vote) {
@@ -192,148 +202,38 @@ function is_already_replied_to(author, permlink) {
 
 
 function reply(author, permlink, type) {
-    var context = {
-    }
-
-    return loadTemplate(path.join(__dirname, '..', 'templates', `${type}.hb`))
-        .then((template) => {
-            var templateSpec = Handlebars.compile(template)
-            return templateSpec(context)
-        })
-        .then((message) => {
-            var new_permlink = 're-' + author 
-                + '-' + permlink 
-                + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
-            steem.broadcast.commentAsync(
-                wif,
-                author, // Leave parent author empty
-                permlink, // Main tag
-                user, // Author
-                new_permlink, // Permlink
-                new_permlink,
-                message, // Body
-                { tags: [], app: 'we-resist-bot/0.1.0' }
-            ).then((results) => {
-                console.log(results)
-            })
-        })
+    COMMENTS.push({ author: author, permlink: permlink, type: type })
 }
 
 function downvote(author, permlink, resister) {
-    var recovery_wait = 0
-    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
-        if (accounts && accounts.length > 0) {
-            const account = accounts[0];
-            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-            return account
-        }
-    })
-    .then((account) => {
-        // Reschedule vote
-        if (recovery_wait > 0) {
-            console.log("Rescheduling ", recovery_wait, " minutes to recover")
-            var later = moment().add(recovery_wait, 'minutes').toDate()
-            schedule.scheduleJob(later, function() {
-                downvote(author, permlink, resister)
-            })
-            return account
-        }
-        return vote(author, permlink, resister, resister.downvoteWeight * -100)
-            .then((promise) => { 
-                return is_already_replied_to(author, permlink) 
-                    .then((found) => { 
-                        if (!found) {
-                            return reply(author, permlink, "downvote") 
-                        }
-                        return found;
-                    });
-            });
-            
-    })
-    return vote(author, permlink, resister, resister.downvoteWeight * -100)
+    vote(author, permlink, resister, resister.downvoteWeight * -100)
+    return is_already_replied_to(author, permlink) 
+        .then((found) => { 
+            if (!found) {
+                return reply(author, permlink, "downvote") 
+            }   
+            return found;
+        });
 }
 
 function upvote(author, permlink, resister) {
     var recovery_wait = 0
-    return steem.api.getAccountsAsync([ resister.username ]).then((accounts) => {
-        if (accounts && accounts.length > 0) {
-            const account = accounts[0];
-            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-            recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-            return account
-        }
-    })
-    .then((account) => {
-        // Reschedule vote
-        if (recovery_wait > 0) {
-            console.log("Rescheduling ", recovery_wait, " minutes to recover")
-            var later = moment().add(recovery_wait, 'minutes').toDate()
-            schedule.scheduleJob(later, function() {
-                upvote(author, permlink, resister)
-            })
-            return account
-        }
-        return vote(author, permlink, resister, resister.upvoteWeight * 100)
-            .then((promise) => {
-                return is_already_replied_to(author, permlink)
-                    .then((found) => {
-                        if (!found) { // we we haven't replied yet
-                            return reply(author, permlink, "upvote") 
-                        }
-                        return found;
-                    });
-            });
-    })
+    vote(author, permlink, resister, resister.upvoteWeight * 100)
+    return is_already_replied_to(author, permlink)
+        .then((found) => {
+            if (!found) { // we we haven't replied yet
+                return reply(author, permlink, "upvote") 
+            }
+            return found;
+        });
 }
 
 function unvote(author, permlink, resister) {
-    return vote(author, permlink, resister, UNVOTE_WEIGHT)
+    vote(author, permlink, resister, UNVOTE_WEIGHT)
 }
 
 function vote(author, permlink, resister, weight) {
-
-    if (resister.refresh_token) {
-        return fetch_access_token(resister)
-            .then((data) => {
-                api.setAccessToken(data.access_token)
-
-                const retval = api.vote(resister.username, 
-                        author,
-                        permlink,
-                        weight,
-                        function(err, results) {
-                            if (err) {
-                                return Promise.reject(err);
-                            }
-                            return Promise.resolve(results);
-                        })
-                api.setAccessToken('')
-                return retval;                
-            })
-            .then((results) => {
-                console.log("Vote result: ", results);
-            })
-            .catch((exception) => {
-                console.log("Unable to vote ", exception)
-            })
-    }
-
-    return steem.broadcast.voteAsync(
-            resister.wif, 
-            resister.username, 
-            author,
-            permlink,
-            weight
-        )
-        .then((results) =>  {
-            console.log(results)
-        })
-        .catch((err) => {
-            console.log("Vote failed: ", err)
-        })
+    VOTING.push({ author: author, permlink: permlink, resister: resister, weight: weight })
 }
 
 function collectiveDownvote(author, permlink) {
@@ -350,8 +250,10 @@ function collectiveUnvote(author, permlink) {
 
 function processComment(comment) {
     return list_of_resisters()
-        .filter((resister) => comment.author == resister.username)
+        .filter((resister) => comment.author == resister.username &&
+                               comment.author != "the-resistance")
         .each((resister) => {
+            console.log("Processing comment ", comment);
             var recovery_wait = 0
             return steem.api.getAccountsAsync([ user ]).then((accounts) => {
                 if (accounts && accounts.length > 0) {
@@ -377,25 +279,62 @@ function processComment(comment) {
         })
 }
 
-function execute() {    
-    processVote(new Vote({ permlink: "q4ke0ntg", author: "melissakellie", voter: "grumpycat", weight: -10000}))
+function mainLoop() {
+
+    processVote(new Vote({ permlink: "re-eloyibarra-frase-del-dia-sabado-10-de-marzo-de-2018-20180322t070155876z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-trifeno4ka-i-love-the-lilac-20180322t065245100z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
+    processVote(new Vote({ permlink: "re-adipisces-macrophotography-or-small-animals-5d93798a81e65-20180322t065223282z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
 
     console.log("Processing votes from stream of operations")
-    steem.api.streamOperations('head', (err, result) => {
-        if (result && result.length > 0) {
-            var operation_name = result[0]
+    steem.api.streamOperations((err, results) => {
+        return new Promise((resolve, reject) => {
+            if (err) {
+                console.log("Unable to stream operations %s", err)
+                return reject(err)
+            }
+            return resolve(results) // results [ "operation name", operation:{} ]
+        }).spread((operation_name, operation) => {
+
+            if (counter % 1000 == 0) {
+                counter = 0
+                console.log("Processing %s on %s", operation, new Date())
+            }
+
             switch(operation_name) {
                 case 'comment':
-                    // processComment(result[1]);
+                    // if (operation.parent_author == '') {
+                        processComment(operation)
+                            .catch((e) => {
+                                console.log("Failed to process comment ", e)
+                            });
+                    //}
                     break;
                 case 'vote':
-                    // processVote(new Vote(result[1]))
+                    processVote(new Vote(operation))
+                        .catch((e) => {
+                            console.log("Failed to process vote ", e)
+                        })
                     break;
                 case 'unvote':
-                    // processUnvote(new Vote(result[1]))
+                    processUnvote(new Vote(operation))
+                        .catch((e) => {
+                            console.log("Failed to process unvote ", e)
+                        })
                     break;
                 default:
             }   
-        }
+            counter++
+            heartbeat = moment();
+        })
+        .catch((err) => {
+            console.log("Bot died. Restarting ... ", err)
+            mainLoop(); // restart bot since it died
+        })
     })
+}
+
+function execute(voting_queue, comment_queue) {
+    VOTING = voting_queue;
+    COMMENTS = comment_queue;
+    mainLoop();
 }
