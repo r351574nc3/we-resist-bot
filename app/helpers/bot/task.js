@@ -172,7 +172,7 @@ function invite(author, permlink) {
 function is_already_replied_to(author, permlink) {
     return steem.api.getContentRepliesAsync(author, permlink)
         .filter((reply) => user == reply.author)
-        .then((replies) => { return replies.length > 0 })
+        .then((replies) => { return replies.length > 0 || COMMENTS.includes(author, permlink)})
 }
 
 
@@ -181,26 +181,27 @@ function reply(author, permlink, type) {
 }
 
 function downvote(author, permlink, resister) {
-    vote(author, permlink, resister, resister.downvoteWeight * -100)
-    return is_already_replied_to(author, permlink) 
-        .then((found) => { 
-            if (!found) {
-                return reply(author, permlink, "downvote") 
-            }   
-            return found;
-        });
+    return new Promise((resolve, reject) => {
+        try {
+            vote(author, permlink, resister, resister.downvoteWeight * -100)
+            resolve(true)
+        }
+        catch (err) {
+            reject(err)
+        }
+    });
 }
 
 function upvote(author, permlink, resister) {
-    var recovery_wait = 0
-    vote(author, permlink, resister, resister.upvoteWeight * 100)
-    return is_already_replied_to(author, permlink)
-        .then((found) => {
-            if (!found) { // we we haven't replied yet
-                return reply(author, permlink, "upvote") 
-            }
-            return found;
-        });
+    return new Promise((resolve, reject) => {
+        try {
+            vote(author, permlink, resister, resister.upvoteWeight * 100)
+            resolve(true)
+        }
+        catch (err) {
+            reject(err)
+        }
+    });
 }
 
 function unvote(author, permlink, resister) {
@@ -213,10 +214,29 @@ function vote(author, permlink, resister, weight) {
 
 function collectiveDownvote(author, permlink) {
     return list_of_resisters().each((resister) => { return downvote(author, permlink, resister) })
+        .then(() => {
+            return is_already_replied_to(author, permlink)
+                .then((found) => { 
+                    if (!found) {
+                        return reply(author, permlink, "downvote") 
+                    }   
+                    return found;
+                });    
+            })
+
 }
 
 function collectiveUpvote(author, permlink) {
     return list_of_resisters().each((resister) => { return upvote(author, permlink, resister) })
+        .then(() => {
+            return is_already_replied_to(author, permlink)
+                .then((found) => {
+                    if (!found) { // we we haven't replied yet
+                        return reply(author, permlink, "upvote") 
+                    }
+                    return found;
+                });            
+            })
 }
 
 function collectiveUnvote(author, permlink) {
@@ -252,9 +272,7 @@ function processComment(comment) {
         })
 }
 
-function execute() {    
-    processVote(new Vote({ permlink: "q4ke0ntg", author: "melissakellie", voter: "grumpycat", weight: -10000}))
-
+function mainLoop() {
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations('head', (err, result) => {
         if (result && result.length > 0) {
