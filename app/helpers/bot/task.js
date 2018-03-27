@@ -197,7 +197,7 @@ function invite(author, permlink) {
 function is_already_replied_to(author, permlink) {
     return steem.api.getContentRepliesAsync(author, permlink)
         .filter((reply) => user == reply.author)
-        .then((replies) => { return replies.length > 0 })
+        .then((replies) => { return replies.length > 0 || COMMENTS.includes(author, permlink)})
 }
 
 

@@ -18,12 +18,14 @@ const voting = {
 
 const comments = {
     length: () => { return comment_queue.length },
+    includes: (author, permlink) => {
+        comment_queue.filter((comment) => comment.author == author && comment.permlink == permlink).length > 0
+    },
     push: (obj) => { 
         return comment_queue.push(obj) 
     },
     pop: () => { return comment_queue.pop() },
     shift: () => {
-        console.log("Shifting comments ", comment_queue)
         return comment_queue.shift() 
     },
     unshift: (obj) => { return comment_queue.unshift(obj) }
