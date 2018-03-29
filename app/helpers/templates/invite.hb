@@ -11,7 +11,7 @@ You are bullied by @GrumpyCat on your post.
 Join our bot We-Resist to protect minnows  https://we-resist-bot.herokuapp.com
 Come to our house to meet with the community https://discord.gg/qMWCbWR
 
-https://steemitimages.com/256x512/https://steemitimages.com/DQmasLjbAiiPJKeiM6GHZRb9bgghMLQKP4iiUp3jCdkVJyS/image.png
+https://s17.postimg.org/farzjgu1r/theresistancelogo.jpg
 ### @GrumpyCat, to your tyranny WE-RESIST
 
 The Resistance
