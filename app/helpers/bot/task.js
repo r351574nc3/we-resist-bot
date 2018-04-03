@@ -13,6 +13,7 @@ const Handlebars = require('handlebars')
 const fs = Promise.promisifyAll(require('fs'))
 const path = require('path')
 const rp = require('request-promise');
+const EventEmitter = require("events");
 
 
 const UNVOTE_WEIGHT = 0
@@ -299,45 +300,16 @@ function processComment(comment) {
         })
 }
 
-function mainLoop() {
-    processVote(new Vote({ permlink: "re-snowpea-re-drakos-re-snowpea-happy-haturday-and-other-random-stuff-20180326t041618288z", author: "grumpycat", voter: "madpuppy", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-good-karme-amazing-view-of-white-flower--today-i-ca-2018-03-18-15-49-15-20180326t034705670z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-good-karme-amazing-view-of-white-flower--today-i-ca-2018-03-18-15-49-15-20180326t034705670z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-rickyyolanda86-the-front-road-of-north-aceh-bupati-s-hall-ab148a17ba618-20180326t034830986z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-jie28-62dvel-long-exposure-photography-20180326t035341580z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-hajevoy60-longexposurephotography-fountain-of-amphitrite-in-the-market-square-in-lviv-20180326t035518662z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-nicholasmwanje-my-golden-hour-contest-20180326t035553668z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-travoved-moonlight-night-in-golden-horn-bay-20180326t035736656z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-nicholasmwanje-herbal-medicine-photography-20180326t035920444z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-abontikazaman-4lmaym-here-is-my-entry-longexposurephotography-which-is-powered-by-juliank-20180326t040245512z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-chbartist-construyendo-el-camino-al-exito-capitulo-1-20180327t191349910z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-steemitmwanje1-color-challenge-20180326t040047610z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-boyasyie-seminar-to-invest-in-steemit-com-f3a807d4f934c-20180326t040006708z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-olgamaslievich-endless-walls-around-the-castle-longexposurephotography-by-olga-maslievich-20180326t035843150z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-aniellopas-green-waterfall-20180326t035437654z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "re-dailytop10open-2bgqay-daily-top-10-crypto-rises-20180327t184115638z", author: "grumpycat", voter: "grumpycat", weight: 10000 }))
-    processVote(new Vote({ permlink: "5tmwcf-daily-top-crypto-open-price", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "2", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "59sjn2-daily-top-10-crypto-rises", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "3pksn2-daily-top-10-crypto-rises", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "55uqtk-daily-top-crypto-open-price", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "765blm-daily-top-crypto-open-price", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "2bgqay-daily-top-10-crypto-rises", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "8", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "6", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "4", author: "dailytop10open", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "re-grumpycat-re-chbartist-construyendo-el-camino-al-exito-capitulo-1-20180328t151019728z", author: "kupisikhan", voter: "grumpycat", weight: -10000 }))
-    processVote(new Vote({ permlink: "best-author-reward-project-for-steemians", author: "upmewhale", voter: "grumpycat", weight: -10000 }))
+function mainLoop(notifier) {
 
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations((err, results) => {
-        return new Promise((resolve, reject) => {
-            if (err) {
-                console.log("Unable to stream operations %s", err)
-                return reject(err)
-            }
-            return resolve(results) // results [ "operation name", operation:{} ]
-        }).spread((operation_name, operation) => {
+        if (err) {
+            console.log("Unable to stream operations %s", err)
+            notifier.emit("fail");
+            return 
+        }
+        return Promise.resolve(results).spread((operation_name, operation) => {
 
             if (counter % 1000 == 0) {
                 counter = 0
@@ -372,13 +344,19 @@ function mainLoop() {
         })
         .catch((err) => {
             console.log("Bot died. Restarting ... ", err)
-            mainLoop(); // restart bot since it died
         })
     })
 }
 
+class FailureHandler extends EventEmitter {}
+const steemFailureHandler = new FailureHandler();
+
 function execute(voting_queue, comment_queue) {
     VOTING = voting_queue;
     COMMENTS = comment_queue;
-    mainLoop();
+
+    mainLoop(steemFailureHandler);
+    steemFailureHandler.on('fail', () => {
+        mainLoop(steemFailureHandler);
+    });
 }
