@@ -10,7 +10,8 @@ Your self upvote is flagged by The-Resistance team using the WE-RESIST bot.
 We will be resisting with a team, stronger each day, unless you stop downvoting innocent people.
 
 https://s17.postimg.org/farzjgu1r/theresistancelogo.jpg
-### To your tyranny WE-RESIST
+### To your bullying WE-RESIST
 
-The Resistance
 Discord: https://discord.gg/qMWCbWR
+@GrumpyCat: you can avoid ever seeing this message again when you STOP attacking innocents. 
+Love: @the-resistance 
