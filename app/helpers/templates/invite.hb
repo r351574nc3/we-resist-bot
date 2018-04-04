@@ -1,17 +1,13 @@
-### WE ARE THE RESISTANCE!
+ We Are The-Resistance: 
+We have seen that @grumpycat or his alt @madpuppy has flagged your post. 
+You are not alone. He also: 
+- flags innocent people and calls them "collateral damage"
+- tries to impose his rules by using his SP on those weaker than him
+- rejects all diplomatic proposals presented
+@the-resistance has upvoted you to help heal the damage he has done to you in an effort to protect people like yourself. 
+Join our bot we-resist to help protect others ....https://we-resist-bot.herokuapp.com 
+Come to meet with the community ... https://discord.gg/qMWCbWR
+https://s17.postimg.org/farzjgu1r/theresistancelogo.jpg   
 
-You are bullied by @GrumpyCat on your post.
-
-* @GrumpyCat is flagging innocent people and calling them "collateral damage"!
-* @GrumpyCat is trying to impose his rules by using your SP on ones weaker than him!
-* @GrumpyCat has rejected all the diplomatic proposals we have brought so far!
-
-@The-Resistance is here to stop this and protect the weaker ones from the tyranny of @GrumpyCat  
-
-Join our bot We-Resist to protect minnows  https://we-resist-bot.herokuapp.com
-Come to our house to meet with the community https://discord.gg/qMWCbWR
-
-https://s17.postimg.org/farzjgu1r/theresistancelogo.jpg
-### @GrumpyCat, to your tyranny WE-RESIST
-
-The Resistance
+@GrumpyCat: you can avoid ever seeing this message again when you STOP attacking innocents. 
+Love: @the-resistance 
