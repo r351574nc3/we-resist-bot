@@ -1,9 +1,9 @@
 'use strict'
 
 const Promise = require('bluebird')
-const steem = require('steem')
+const steem = Promise.promisifyAll(require('steem'))
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif, sc2_secret, steemit_url, grumpy, blacklisted } = require('../../config')
+const { user, wif, sc2_secret } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -32,7 +32,7 @@ const MAX_VOTING_POWER = 10000
 const DAYS_TO_100_PERCENT = 100 / PERCENT_PER_DAY
 const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PER_HOUR
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
-const DEFAULT_THRESHOLD = 9000
+const DEFAULT_THRESHOLD = 9500
 
 const api = sc2.Initialize({
     app: 'we-resist',
@@ -41,15 +41,9 @@ const api = sc2.Initialize({
     scope: ['vote', 'comment', 'offline']
   })
 
-steem.api.setWebSocket(steemit_url)
-
-let heartbeat = moment();
-let counter = 0
 
 function current_voting_power(vp_last, last_vote) {
-    console.log("Comparing %s to %s ", moment().utc().add(7, 'hours').local().toISOString(), moment(last_vote).utc().local().toISOString())
-
-    var seconds_since_vote = moment().utc().add(7, 'hours').local().diff(moment(last_vote).utc().local(), 'seconds')
+    var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
     return (RECOVERY_RATE * seconds_since_vote) + vp_last
 }
 
@@ -59,12 +53,11 @@ function time_needed_to_recover(voting_power, threshold) {
 
 // Stubbed function
 function list_of_grumpy_users() {
-    return grumpy;
-}
-
-// Stubbed function
-function list_of_blacklisted_users() {
-    return blacklisted;
+    let grumps = []
+    grumps.push('grumpycat')
+    return new Promise((resolve, reject) => {
+        resolve(grumps)
+    })
 }
 
 class Vote {
@@ -83,21 +76,15 @@ class Vote {
         return this.weight > 0
     }
 
-    is_downvote_worthy() {
-        return this.weight > 300;
-    }
-
     is_voter_grumpy() {
         // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
-        return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
+        return this.voter == 'grumpycat'
     }
 
     is_author_grumpy() {
-        return list_of_grumpy_users().filter((user) => this.author == user).length > 0
-    }
-
-    is_author_blacklisted() {
-        return list_of_blacklisted_users().filter((user) => this.author == user).length > 0
+        return list_of_grumpy_users()
+            .filter((user) => this.author == user)
+            .then((users) => { return users.length > 0 })
     }
 
     is_for_post() {
@@ -115,18 +102,17 @@ class Vote {
 }
 
 function processVote(vote) {
-
     if (!vote.is_voter_grumpy()) {
         return new Promise.resolve(false)
     }
 
     console.log("processing vote ", vote);
 
-    if (vote.is_upvote() && vote.is_downvote_worthy()) {
+    if (vote.is_upvote()) {
         return processUpvote(vote)
     }
 
-    return vote.is_for_resister()
+    vote.is_for_resister()
         .then((it_is) => {
             if (it_is) {
                 return vote.is_for_post()
@@ -141,12 +127,6 @@ function processVote(vote) {
         })
 }
 
-function resister_has_token(resister) {
-    return steem.api.getAccountsAsync([ resister.username ])
-        .filter((account) => account.posting.account_auths.filter((auth) => auth[0] == 'we-resist').length > 0)
-        .then((accounts) => accounts.length > 0)
-}
-
 /**
  * Resisters look like
  * {
@@ -159,33 +139,30 @@ function resister_has_token(resister) {
  */
 function list_of_resisters() {
     return models.Preferences.findAll( {
-        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ],
         logging: (query) => {}
-    }).filter((user) => resister_has_token(user))
+    })
 }
 
 function processDownvote(vote) {
-    return new Promise((resolve, reject) => {
-        if (!vote.is_author_blacklisted()) { // Ignore blacklisted users
-            console.log('Processing vote ', vote)
-            return collectiveUpvote(vote.author, vote.permlink)
-        }
-    })
+    console.log('Processing vote ', vote)
+    return collectiveUpvote(vote.author, vote.permlink)
 }
 
 function processUpvote(vote) {
-    return new Promise((resolve, reject) => {
-        if (vote.is_author_grumpy()) {
-            console.log("Downvoting ", vote)
-            return collectiveDownvote(vote.author, vote.permlink)
-        }
+    return vote.is_author_grumpy()
+        .then((is_grumpy) => {
+            if (is_grumpy) { // Test for self-vote
+                console.log("Downvoting ", vote)
+                return collectiveDownvote(vote.author, vote.permlink)
+            }
 
-        // Not a self-vote
-        return reject("Not a self vote")
-    })
-    .catch((err) => {
-        console.log(err)
-    })
+            // Not a self-vote
+            Promise.reject("Not a self vote")
+        })
+        .catch((err) => {
+            console.log(err)
+        })
 }
 
 function processUnvote(vote) {
@@ -282,10 +259,8 @@ function collectiveUnvote(author, permlink) {
 
 function processComment(comment) {
     return list_of_resisters()
-        .filter((resister) => comment.author == resister.username &&
-                               comment.author != "the-resistance")
+        .filter((resister) => comment.author == resister.username)
         .each((resister) => {
-            console.log("Processing comment ", comment);
             var recovery_wait = 0
             return steem.api.getAccountsAsync([ user ]).then((accounts) => {
                 if (accounts && accounts.length > 0) {
@@ -337,19 +312,13 @@ function mainLoop(notifier) {
                     }
                     break;
                 case 'vote':
-                    processVote(new Vote(operation))
-                        .catch((e) => {
-                            console.log("Failed to process vote ", e)
-                        })
+                    processVote(new Vote(result[1]))
                     break;
                 case 'unvote':
-                    processUnvote(new Vote(operation))
-                        .catch((e) => {
-                            console.log("Failed to process unvote ", e)
-                        })
+                    processUnvote(new Vote(result[1]))
                     break;
                 default:
-            }   
+            }
             counter++
             heartbeat = moment();
         })
