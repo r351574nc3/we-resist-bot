@@ -39,7 +39,10 @@ function fetch_access_token(resister) {
 function current_voting_power(vp_last, last_vote) {
     console.log("Comparing %s to %s ", moment().utc().add(7, 'hours').local().toISOString(), moment(last_vote).utc().local().toISOString())
 
-    var seconds_since_vote = moment().utc().add(7, 'hours').local().diff(moment(last_vote).utc().local(), 'seconds')
+    const native_seconds = (new Date - new Date(last_vote)) / 1000;
+    var seconds_since_vote = moment().utc().local().diff(moment(last_vote).utc().local(), 'seconds')
+
+    console.log("Last vote was either %s or %s ago", native_seconds, seconds_since_vote)
     return (RECOVERY_RATE * seconds_since_vote) + vp_last
 }
 
@@ -52,8 +55,8 @@ function check_can_vote(resister) {
         if (accounts && accounts.length > 0) {
             const account = accounts[0];
             console.log("Voting threshold for %s: %s", resister.username, resister.threshold)
-            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-            var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
+            console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time + "Z")
+            var voting_power = current_voting_power(account.voting_power, account.last_vote_time + "Z")
             if (!resister.threshold || voting_power > resister.threshold) {
                 return true;
             }

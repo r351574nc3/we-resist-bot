@@ -100,6 +100,13 @@ class Vote {
         return list_of_blacklisted_users().filter((user) => this.author == user).length > 0
     }
 
+    is_for_post() {
+        return steem.api.getContentAsync(this.author, this.permlink)
+            .then((content) => {
+                return content.parent_author == ''
+            })
+    }
+
     is_for_resister() {
         return list_of_resisters()
             .filter((resister) => this.author == resister.username)
@@ -110,9 +117,7 @@ class Vote {
 function processVote(vote) {
 
     if (!vote.is_voter_grumpy()) {
-        return new Promise((resolve, reject) => {
-            resolve(false)
-        })
+        return new Promise.resolve(false)
     }
 
     console.log("processing vote ", vote);
@@ -122,6 +127,12 @@ function processVote(vote) {
     }
 
     return vote.is_for_resister()
+        .then((it_is) => {
+            if (it_is) {
+                return vote.is_for_post()
+            }
+            return false
+        })
         .then((it_is) => {
             if (it_is) {
                 return processDownvote(vote)
