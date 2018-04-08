@@ -105,9 +105,11 @@ function processVote(vote) {
 
     console.log("processing vote ", vote);
 
+    /*
     if (vote.is_upvote()) {
         return processUpvote(vote)
     }
+    */
 
     vote.is_for_resister()
         .then((it_is) => {
@@ -118,7 +120,7 @@ function processVote(vote) {
         })
         .then((it_is) => {
             if (it_is) {
-                return processDownvote(vote)
+                // return processDownvote(vote)
             }
             else {
                 list_of_voters()
@@ -126,8 +128,9 @@ function processVote(vote) {
                         return upvote(vote.author, vote.permlink, voter)
                     })
             }
-            return invite(vote.author, vote.permlink);
+            // return invite(vote.author, vote.permlink);
         })
+    return new Promise.resolve(false)
 }
 
 /**

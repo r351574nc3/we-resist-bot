@@ -57,7 +57,8 @@ function check_can_vote(resister) {
             console.log("Voting threshold for %s: %s", resister.username, resister.threshold)
             console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time + "Z")
             var voting_power = current_voting_power(account.voting_power, account.last_vote_time + "Z")
-            if (!resister.threshold || voting_power > resister.threshold) {
+            console.log("Comparing voting power %s to threshold %s", voting_power,  (resister.threshold * 100))
+            if (!resister.threshold || voting_power > (resister.threshold * 100)) {
                 return true;
             }
         }
