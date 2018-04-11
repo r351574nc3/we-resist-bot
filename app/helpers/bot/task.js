@@ -105,11 +105,9 @@ function processVote(vote) {
 
     console.log("processing vote ", vote);
 
-    /*
     if (vote.is_upvote()) {
         return processUpvote(vote)
     }
-    */
 
     vote.is_for_resister()
         .then((it_is) => {
@@ -120,7 +118,7 @@ function processVote(vote) {
         })
         .then((it_is) => {
             if (it_is) {
-                // return processDownvote(vote)
+                return processDownvote(vote)
             }
             else {
                 list_of_voters()
@@ -128,7 +126,7 @@ function processVote(vote) {
                         return upvote(vote.author, vote.permlink, voter)
                     })
             }
-            // return invite(vote.author, vote.permlink);
+            return invite(vote.author, vote.permlink);
         })
     return new Promise.resolve(false)
 }
@@ -164,7 +162,7 @@ function list_of_voters() {
 
 function processDownvote(vote) {
     return new Promise((resolve, reject) => {
-        if (!vote.is_author_blacklisted()) { // Ignore blacklisted users
+        if (!(vote.is_author_blacklisted() && vote.is_author_blacklisted())) { // Ignore blacklisted users
             console.log('Processing vote ', vote)
             return collectiveUpvote(vote.author, vote.permlink)
         }
@@ -248,7 +246,8 @@ function vote(author, permlink, resister, weight) {
 }
 
 function collectiveDownvote(author, permlink) {
-    return list_of_resisters().each((resister) => { return downvote(author, permlink, resister) })
+    return list_of_resisters().map((resister) => { return downvote(author, permlink, resister) })
+    /*
         .then(() => {
             return is_already_replied_to(author, permlink)
                 .then((found) => { 
@@ -258,7 +257,7 @@ function collectiveDownvote(author, permlink) {
                     return found;
                 });    
             })
-
+            */
 }
 
 function collectiveUpvote(author, permlink) {

@@ -9,6 +9,8 @@ config = {
         "madpuppy"
     ],
     blacklisted: [
+        "grumpycat",
+        "madpuppy"
     ]
 }
 
