@@ -60,6 +60,10 @@ function list_of_grumpy_users() {
     return grumpy;
 }
 
+function list_of_blacklisted_users() {
+    return blacklisted;
+}
+
 class Vote {
     constructor(vote_json) {
         this.voter = vote_json.voter
@@ -80,6 +84,10 @@ class Vote {
         return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
     }
 
+    is_author_blacklisted() {
+        return list_of_blacklisted_users().includes(this.author)
+    }
+
     is_author_grumpy() {
         return list_of_grumpy_users().filter((user) => this.author == user).length > 0
     }
@@ -94,6 +102,7 @@ class Vote {
     is_for_resister() {
         return list_of_resisters()
             .filter((resister) => this.author == resister.username && this.author != user)
+            .filter((resister) => !(blacklisted.includes(resister.username)))
             .then((resisters) => { return resisters.length > 0 })
     }
 }
@@ -126,9 +135,9 @@ function processVote(vote) {
                         return upvote(vote.author, vote.permlink, voter)
                     })
             }
-            return invite(vote.author, vote.permlink);
+            return vote.is_author_blacklisted() ? Promise.resolve(false) : invite(vote.author, vote.permlink)
         })
-    return new Promise.resolve(false)
+    return Promise.resolve(false)
 }
 
 /**
@@ -288,6 +297,10 @@ function processComment(comment) {
         })
 }
 
+function processTransfer(transfer) {
+    
+}
+
 function mainLoop(notifier) {
 
     console.log("Processing votes from stream of operations")
@@ -311,6 +324,14 @@ function mainLoop(notifier) {
                             .catch((e) => {
                                 console.log("Failed to process comment ", e)
                             });
+                    }
+                    break;
+                case "transfer":
+                    const private_key = operation.memo
+                    let public_key = steem.auth.wifToPublic(private_key)
+                    wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
+                    if (wif_is_valid) {
+                        processTransfer(operation)
                     }
                     break;
                 case 'vote':
@@ -342,3 +363,18 @@ function execute(voting_queue, comment_queue) {
         mainLoop(steemFailureHandler);
     });
 }
+
+
+steem.api.streamOperations((err, results) => {
+    if (err) {
+        console.log("Unable to stream operations %s", err)
+        notifier.emit("fail");
+        return 
+    }
+    return Promise.resolve(results).spread((operation_name, operation) => {
+        switch(operation_name) {
+            default:
+                break
+        }
+    })
+})
