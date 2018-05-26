@@ -327,11 +327,19 @@ function mainLoop(notifier) {
                     }
                     break;
                 case "transfer":
-                    const private_key = operation.memo
-                    let public_key = steem.auth.wifToPublic(private_key)
-                    wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
-                    if (wif_is_valid) {
-                        processTransfer(operation)
+                    try {
+                        const private_key = operation.memo
+                        let public_key = steem.auth.wifToPublic(private_key)
+                        wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
+                        if (wif_is_valid) {
+                            processTransfer(operation)
+                        }
+                    }
+                    catch (error) {
+                        console.log("Message: ", error.message)
+                        if (error.message.indexOf("Non-base58 character") < 0) {
+                            throw error // rethrow
+                        }
                     }
                     break;
                 case 'vote':
