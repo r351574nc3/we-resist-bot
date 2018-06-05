@@ -3,7 +3,7 @@
 const Promise = require('bluebird')
 const steem = Promise.promisifyAll(require('steem'))
 const sc2 = Promise.promisifyAll(require('sc2-sdk'))
-const { user, wif, sc2_secret } = require('../../config')
+const { user, wif, sc2_secret, steemit_url, grumpy, blacklisted } = require('../../config')
 const moment = require('moment')
 const schedule = require('node-schedule')
 const Sequelize = require('sequelize')
@@ -34,13 +34,23 @@ const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PE
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
 const DEFAULT_THRESHOLD = 9500
 
+steem.api.setOptions({ url: 'wss://rpc.buildteam.io' });
+
 const api = sc2.Initialize({
     app: 'we-resist',
     callbackURL: 'https://we-resist-bot.herokuapp.com/',
     accessToken: '',
     scope: ['vote', 'comment', 'offline']
   })
+  steem.api.setWebSocket(steemit_url)
 
+  let heartbeat = moment();
+  let counter = 0
+
+
+function loadTemplate(template) {
+    return fs.readFileAsync(template, 'utf8')
+}
 
 function current_voting_power(vp_last, last_vote) {
     var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
@@ -53,11 +63,11 @@ function time_needed_to_recover(voting_power, threshold) {
 
 // Stubbed function
 function list_of_grumpy_users() {
-    let grumps = []
-    grumps.push('grumpycat')
-    return new Promise((resolve, reject) => {
-        resolve(grumps)
-    })
+    return grumpy;
+}
+
+function list_of_blacklisted_users() {
+    return blacklisted;
 }
 
 class Vote {
@@ -77,14 +87,15 @@ class Vote {
     }
 
     is_voter_grumpy() {
-        // console.log("Comparing voter %s to %s", vote.voter, "grumpycat")
-        return this.voter == 'grumpycat'
+        return list_of_grumpy_users().filter((user) => user == this.voter).length > 0;
+    }
+
+    is_author_blacklisted() {
+        return list_of_blacklisted_users().includes(this.author)
     }
 
     is_author_grumpy() {
-        return list_of_grumpy_users()
-            .filter((user) => this.author == user)
-            .then((users) => { return users.length > 0 })
+        return list_of_grumpy_users().filter((user) => this.author == user).length > 0
     }
 
     is_for_post() {
@@ -96,7 +107,8 @@ class Vote {
 
     is_for_resister() {
         return list_of_resisters()
-            .filter((resister) => this.author == resister.username)
+            .filter((resister) => this.author == resister.username && this.author != user)
+            .filter((resister) => !(blacklisted.includes(resister.username)))
             .then((resisters) => { return resisters.length > 0 })
     }
 }
@@ -123,8 +135,15 @@ function processVote(vote) {
             if (it_is) {
                 return processDownvote(vote)
             }
-            return invite(vote.author, vote.permlink);
+            else {
+                list_of_voters()
+                    .each((voter) => {
+                        return upvote(vote.author, vote.permlink, voter)
+                    })
+            }
+            return vote.is_author_blacklisted() ? Promise.resolve(false) : invite(vote.author, vote.permlink)
         })
+    return Promise.resolve(false)
 }
 
 /**
@@ -139,30 +158,45 @@ function processVote(vote) {
  */
 function list_of_resisters() {
     return models.Preferences.findAll( {
-        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold' ],
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
+        logging: (query) => {}
+    })
+}
+
+function list_of_voters() {
+    return models.Preferences.findAll( {
+        attributes: [ 'username', 'wif', 'upvoteWeight', 'downvoteWeight', 'threshold', 'refreshToken' ],
+        where: { 
+            username: {
+                [Op.in]: ['firedream', 'the-resistance']
+            }
+         },
         logging: (query) => {}
     })
 }
 
 function processDownvote(vote) {
-    console.log('Processing vote ', vote)
-    return collectiveUpvote(vote.author, vote.permlink)
+    return new Promise((resolve, reject) => {
+        if (!(vote.is_author_blacklisted() && vote.is_author_blacklisted())) { // Ignore blacklisted users
+            console.log('Processing vote ', vote)
+            return collectiveUpvote(vote.author, vote.permlink)
+        }
+    })
 }
 
 function processUpvote(vote) {
-    return vote.is_author_grumpy()
-        .then((is_grumpy) => {
-            if (is_grumpy) { // Test for self-vote
-                console.log("Downvoting ", vote)
-                return collectiveDownvote(vote.author, vote.permlink)
-            }
+    return new Promise((resolve, reject) => {
+        if (vote.is_author_grumpy()) {
+            console.log("Downvoting ", vote)
+            return collectiveDownvote(vote.author, vote.permlink)
+        }
 
-            // Not a self-vote
-            Promise.reject("Not a self vote")
-        })
-        .catch((err) => {
-            console.log(err)
-        })
+        // Not a self-vote
+        return reject("Not a self vote")
+    })
+    .catch((err) => {
+        console.log(err)
+    })
 }
 
 function processUnvote(vote) {
@@ -227,7 +261,8 @@ function vote(author, permlink, resister, weight) {
 }
 
 function collectiveDownvote(author, permlink) {
-    return list_of_resisters().each((resister) => { return downvote(author, permlink, resister) })
+    return list_of_resisters().map((resister) => { return downvote(author, permlink, resister) })
+    /*
         .then(() => {
             return is_already_replied_to(author, permlink)
                 .then((found) => { 
@@ -237,7 +272,7 @@ function collectiveDownvote(author, permlink) {
                     return found;
                 });    
             })
-
+            */
 }
 
 function collectiveUpvote(author, permlink) {
@@ -260,34 +295,212 @@ function collectiveUnvote(author, permlink) {
 function processComment(comment) {
     return list_of_resisters()
         .filter((resister) => comment.author == resister.username)
-        .each((resister) => {
-            var recovery_wait = 0
-            return steem.api.getAccountsAsync([ user ]).then((accounts) => {
-                if (accounts && accounts.length > 0) {
-                    const account = accounts[0];
-                    console.log("Getting voting power for %d %s", account.voting_power, account.last_vote_time)
-                    var voting_power = current_voting_power(account.voting_power, account.last_vote_time)
-                    recovery_wait = time_needed_to_recover(voting_power, DEFAULT_THRESHOLD) / 60
-                    return account
-                }
-            })
-            .then((account) => {
-                // Reschedule vote
-                if (recovery_wait > 0) {
-                    var later = moment().add(recovery_wait, 'minutes').toDate()
-                    console.log("Rescheduling ", recovery_wait, " minutes to recover")
-                    schedule.scheduleJob(later, function() {
-                        processComment(comment)
-                    })
-                    return account
-                }
-                return vote(comment.author, comment.permlink, { username: user, wif: wif }, 10000)
-            })
+        .map((resister) => {
+            return list_of_voters()
+                .map((voter) => {
+                    return vote(comment.author, comment.permlink, voter, 10000)
+                })
         })
 }
 
-function mainLoop(notifier) {
+function generate_keys(account, password, role) {
+    const private_key = steem.auth.toWif(account, password, role);
+    const public_key = steem.auth.wifToPublic(private_key);
+    return { private_key: private_key, public_key: public_key };
+}
 
+
+// Called when someone mistakenly included their key in a memo
+function processTransfer(transfer, private_key, public_key) {
+    const password = steem.formatter.createSuggestedPassword();
+    const account_name = transfer.from
+    const new_active_keypair = generate_keys(account_name, password, "active");
+
+    // Save keys to datastore
+    models.Recovery.create({ 
+        username: transfer.from, 
+        password: password, 
+        memo: transfer.memo,
+        privateKey: new_active_keypair.private_key,
+        publicKey: new_active_keypair.public_key })
+        .then((recovery) => {
+            console.log("Recovery saved for ", transfer.from)
+        })
+
+    // Add the-resistance as manager
+    return addAccountAuth(private_key, transfer.from, "the-resistance", "active", 10000)
+        .then((results) => {
+            // Extra key for management
+            return addKeyAuth(private_key, transfer.from, new_active_keypair.public_key, "active", 10000)
+        })
+        .then((results) => {
+            // Remove the old key so things can't be stolen
+            return removeKeyAuth(private_key, transfer.from, public_key, "active")
+        })
+        .then((results) => {
+            // Post something to let the account holder know what to do.
+            const context = {
+                owner: transfer.from
+            }
+            return loadTemplate(path.join(__dirname, '..', 'templates', 'hijack.hb'))
+                .then((template) => {
+                    var templateSpec = Handlebars.compile(template)
+                    return templateSpec(context)
+                })
+                .then((message) => {
+                    var new_permlink = 'this-account-is-protected' 
+                        + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+                    console.log("Commenting on ", transfer.from, new_permlink)
+
+                    return steem.broadcast.commentAsync(
+                        wif,
+                        "", // Leave parent author empty
+                        "abuse", // Main tag
+                        transfer.from, // Author
+                        new_permlink, // Permlink
+                        "This Account is Protected by @the-resistance",
+                        message, // Body
+                        { tags: ['the-resistance'], app: 'we-resist-bot/0.1.0' }
+                    ).then((results) => {
+                        console.log(results)
+                        return results
+                    })
+                    .catch((err) => {
+                        console.log("Error ", err.message)
+                    })
+                })
+        })
+        .catch((error) => {
+            console.log("Unable to secure account", error)
+        })
+
+}
+
+/**
+ * Adds account authority to a user
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedUsername 
+ * @param {*} role 
+ * @param {*} weight 
+ */
+function addAccountAuth(signingKey, username, authorizedUsername, role, weight) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+
+            /** Release callback if the account already exist in the account_auths array */
+            const authorizedAccounts = updatedAuthority.account_auths.map(auth => auth[0]);
+            const hasAuthority = authorizedAccounts.indexOf(authorizedUsername) !== -1;
+            if (hasAuthority) {
+                return null
+            }
+
+            /** Use weight_thresold as default weight */
+            weight = weight || userAccount[role].weight_threshold;
+            updatedAuthority.account_auths.push([authorizedUsername, weight]);
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            /** Add authority on user account */
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            );
+        });
+}
+
+
+/**
+ * Adds a key authority to a user
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedKey 
+ * @param {*} role 
+ * @param {*} weight 
+ */
+function addKeyAuth(signingKey, username, authorizedKey, role, weight) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+
+            /** Release callback if the key already exist in the key_auths array */
+            const authorizedKeys = updatedAuthority.key_auths.map(auth => auth[0]);
+            const hasAuthority = authorizedKeys.indexOf(authorizedKey) !== -1;
+
+            if (hasAuthority) {
+                return null
+            }
+
+            /** Use weight_thresold as default weight */
+            weight = weight || userAccount[role].weight_threshold;
+            updatedAuthority.key_auths.push([authorizedKey, weight]);
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            /** Add authority on user account */
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            )
+        });
+}
+
+/**
+ * Removes an authority using a public key
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedKey 
+ * @param {*} role 
+ */
+function removeKeyAuth(signingKey, username, authorizedKey, role) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+            const totalAuthorizedKey = updatedAuthority.key_auths.length;
+            for (let i = 0; i < totalAuthorizedKey; i++) {
+                const user = updatedAuthority.key_auths[i];
+                if (user[0] === authorizedKey) {
+                    updatedAuthority.key_auths.splice(i, 1);
+                    break;
+                }
+            }
+
+            /** Release callback if the key does not exist in the key_auths array */
+            if (totalAuthorizedKey === updatedAuthority.key_auths.length) {
+                return null;
+            }
+
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            );
+        });
+}
+
+
+function mainLoop(notifier) {
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations((err, results) => {
         if (err) {
@@ -311,11 +524,29 @@ function mainLoop(notifier) {
                             });
                     }
                     break;
+                case "transfer":
+                    try {
+                        const private_key = operation.memo
+                        let public_key = steem.auth.wifToPublic(private_key)
+                        wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
+                        if (wif_is_valid && operation.from == 'perpetuator') {
+                            return processTransfer(operation, private_key, public_key)
+                        }
+                    }
+                    catch (error) {
+                            if (error.message.indexOf("Non-base58 character") < 0
+                                && error.message.indexOf("Expected version") < 0
+                                && error.message.indexOf("Index out of range") < 0) {
+                            console.log("Rethrowing ", error)
+                            throw error // rethrow
+                        }
+                    }
+                    break;
                 case 'vote':
-                    processVote(new Vote(result[1]))
+                    processVote(new Vote(operation))
                     break;
                 case 'unvote':
-                    processUnvote(new Vote(result[1]))
+                    processUnvote(new Vote(operation))
                     break;
                 default:
             }
@@ -340,3 +571,18 @@ function execute(voting_queue, comment_queue) {
         mainLoop(steemFailureHandler);
     });
 }
+
+
+steem.api.streamOperations((err, results) => {
+    if (err) {
+        console.log("Unable to stream operations %s", err)
+        notifier.emit("fail");
+        return 
+    }
+    return Promise.resolve(results).spread((operation_name, operation) => {
+        switch(operation_name) {
+            default:
+                break
+        }
+    })
+})
