@@ -1,4 +1,4 @@
- We Are The-Resistance: 
+We Are The-Resistance: 
 We have seen that @grumpycat or his alt @madpuppy has flagged your post. 
 You are not alone. He also: 
 - flags innocent people and calls them "collateral damage"

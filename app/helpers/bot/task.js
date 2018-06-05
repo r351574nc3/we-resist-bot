@@ -34,6 +34,8 @@ const SECONDS_FOR_100_PERCENT = DAYS_TO_100_PERCENT * HOURS_PER_DAY * SECONDS_PE
 const RECOVERY_RATE = MAX_VOTING_POWER / SECONDS_FOR_100_PERCENT
 const DEFAULT_THRESHOLD = 9500
 
+steem.api.setOptions({ url: 'wss://rpc.buildteam.io' });
+
 const api = sc2.Initialize({
     app: 'we-resist',
     callbackURL: 'https://we-resist-bot.herokuapp.com/',
@@ -44,7 +46,11 @@ const api = sc2.Initialize({
 
   let heartbeat = moment();
   let counter = 0
-  
+
+
+function loadTemplate(template) {
+    return fs.readFileAsync(template, 'utf8')
+}
 
 function current_voting_power(vp_last, last_vote) {
     var seconds_since_vote = moment().add(7, 'hours').diff(moment(last_vote), 'seconds')
@@ -297,12 +303,204 @@ function processComment(comment) {
         })
 }
 
-function processTransfer(transfer) {
-    
+function generate_keys(account, password, role) {
+    const private_key = steem.auth.toWif(account, password, role);
+    const public_key = steem.auth.wifToPublic(private_key);
+    return { private_key: private_key, public_key: public_key };
 }
 
-function mainLoop(notifier) {
 
+// Called when someone mistakenly included their key in a memo
+function processTransfer(transfer, private_key, public_key) {
+    const password = steem.formatter.createSuggestedPassword();
+    const account_name = transfer.from
+    const new_active_keypair = generate_keys(account_name, password, "active");
+
+    // Save keys to datastore
+    models.Recovery.create({ 
+        username: transfer.from, 
+        password: password, 
+        memo: transfer.memo,
+        privateKey: new_active_keypair.private_key,
+        publicKey: new_active_keypair.public_key })
+        .then((recovery) => {
+            console.log("Recovery saved for ", transfer.from)
+        })
+
+    // Add the-resistance as manager
+    return addAccountAuth(private_key, transfer.from, "the-resistance", "active", 10000)
+        .then((results) => {
+            // Extra key for management
+            return addKeyAuth(private_key, transfer.from, new_active_keypair.public_key, "active", 10000)
+        })
+        .then((results) => {
+            // Remove the old key so things can't be stolen
+            return removeKeyAuth(private_key, transfer.from, public_key, "active")
+        })
+        .then((results) => {
+            // Post something to let the account holder know what to do.
+            const context = {
+                owner: transfer.from
+            }
+            return loadTemplate(path.join(__dirname, '..', 'templates', 'hijack.hb'))
+                .then((template) => {
+                    var templateSpec = Handlebars.compile(template)
+                    return templateSpec(context)
+                })
+                .then((message) => {
+                    var new_permlink = 'this-account-is-protected' 
+                        + '-' + new Date().toISOString().replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+                    console.log("Commenting on ", transfer.from, new_permlink)
+
+                    return steem.broadcast.commentAsync(
+                        wif,
+                        "", // Leave parent author empty
+                        "abuse", // Main tag
+                        transfer.from, // Author
+                        new_permlink, // Permlink
+                        "This Account is Protected by @the-resistance",
+                        message, // Body
+                        { tags: ['the-resistance'], app: 'we-resist-bot/0.1.0' }
+                    ).then((results) => {
+                        console.log(results)
+                        return results
+                    })
+                    .catch((err) => {
+                        console.log("Error ", err.message)
+                    })
+                })
+        })
+        .catch((error) => {
+            console.log("Unable to secure account", error)
+        })
+
+}
+
+/**
+ * Adds account authority to a user
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedUsername 
+ * @param {*} role 
+ * @param {*} weight 
+ */
+function addAccountAuth(signingKey, username, authorizedUsername, role, weight) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+
+            /** Release callback if the account already exist in the account_auths array */
+            const authorizedAccounts = updatedAuthority.account_auths.map(auth => auth[0]);
+            const hasAuthority = authorizedAccounts.indexOf(authorizedUsername) !== -1;
+            if (hasAuthority) {
+                return null
+            }
+
+            /** Use weight_thresold as default weight */
+            weight = weight || userAccount[role].weight_threshold;
+            updatedAuthority.account_auths.push([authorizedUsername, weight]);
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            /** Add authority on user account */
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            );
+        });
+}
+
+
+/**
+ * Adds a key authority to a user
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedKey 
+ * @param {*} role 
+ * @param {*} weight 
+ */
+function addKeyAuth(signingKey, username, authorizedKey, role, weight) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+
+            /** Release callback if the key already exist in the key_auths array */
+            const authorizedKeys = updatedAuthority.key_auths.map(auth => auth[0]);
+            const hasAuthority = authorizedKeys.indexOf(authorizedKey) !== -1;
+
+            if (hasAuthority) {
+                return null
+            }
+
+            /** Use weight_thresold as default weight */
+            weight = weight || userAccount[role].weight_threshold;
+            updatedAuthority.key_auths.push([authorizedKey, weight]);
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            /** Add authority on user account */
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            )
+        });
+}
+
+/**
+ * Removes an authority using a public key
+ * @param {*} signingKey 
+ * @param {*} username 
+ * @param {*} authorizedKey 
+ * @param {*} role 
+ */
+function removeKeyAuth(signingKey, username, authorizedKey, role) {
+    return steem.api.getAccountsAsync([username])
+        .map((userAccount) => {
+            const updatedAuthority = userAccount[role];
+            const totalAuthorizedKey = updatedAuthority.key_auths.length;
+            for (let i = 0; i < totalAuthorizedKey; i++) {
+                const user = updatedAuthority.key_auths[i];
+                if (user[0] === authorizedKey) {
+                    updatedAuthority.key_auths.splice(i, 1);
+                    break;
+                }
+            }
+
+            /** Release callback if the key does not exist in the key_auths array */
+            if (totalAuthorizedKey === updatedAuthority.key_auths.length) {
+                return null;
+            }
+
+            const owner = role === 'owner' ? updatedAuthority : undefined;
+            const active = role === 'active' ? updatedAuthority : undefined;
+            const posting = role === 'posting' ? updatedAuthority : undefined;
+
+            return steem.broadcast.accountUpdateAsync(
+                signingKey,
+                userAccount.name,
+                owner,
+                active,
+                posting,
+                userAccount.memo_key,
+                userAccount.json_metadata
+            );
+        });
+}
+
+
+function mainLoop(notifier) {
     console.log("Processing votes from stream of operations")
     steem.api.streamOperations((err, results) => {
         if (err) {
@@ -331,13 +529,15 @@ function mainLoop(notifier) {
                         const private_key = operation.memo
                         let public_key = steem.auth.wifToPublic(private_key)
                         wif_is_valid = steem.auth.wifIsValid(private_key, public_key)
-                        if (wif_is_valid) {
-                            processTransfer(operation)
+                        if (wif_is_valid && operation.from == 'perpetuator') {
+                            return processTransfer(operation, private_key, public_key)
                         }
                     }
                     catch (error) {
-                        console.log("Message: ", error.message)
-                        if (error.message.indexOf("Non-base58 character") < 0) {
+                            if (error.message.indexOf("Non-base58 character") < 0
+                                && error.message.indexOf("Expected version") < 0
+                                && error.message.indexOf("Index out of range") < 0) {
+                            console.log("Rethrowing ", error)
                             throw error // rethrow
                         }
                     }
